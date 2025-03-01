@@ -12,17 +12,31 @@ idb
   });
 
 idb
+  .get("key")
+  .then((v) => {
+    console.log(v);
+  })
+  .catch((e) => {
+    console.log(e);
+  });
+
+idb
   .setMultiple([
     {
       key: "key",
-      val: "",
+      value: "",
     },
     {
       key: "key2",
-      val: "",
+      value: "",
     },
   ])
   .then((v) => {
     console.log(v);
   });
 
+idb.getValues().then((v) => {
+  for (const val of v) {
+    console.log(val);
+  }
+});

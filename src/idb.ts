@@ -1,6 +1,6 @@
 type MultiSetItem<T> = {
   key: IDBValidKey;
-  val: T;
+  value: T;
 };
 
 type IDB_Item = {
@@ -241,7 +241,7 @@ export class IDB {
       const tx = this.#index_db.transaction([this.#storeName], "readwrite");
       if (items.length > 0) {
         for (const item of items) {
-          tx.objectStore(this.#storeName).put(item.val, item.key);
+          tx.objectStore(this.#storeName).put(item.value, item.key);
           tx.onerror = (e) => reject(e);
         }
         tx.oncomplete = () => resolve(true);
