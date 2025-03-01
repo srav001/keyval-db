@@ -1,1 +1,1 @@
-export declare function sayHello(): void;
+export { IDB } from "./idb";

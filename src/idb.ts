@@ -14,7 +14,7 @@ const dbsMap = new Map<DB_Name, IDB_Item>();
 
 type Reject = (err: Event) => void;
 
-class DB {
+export class IDB {
   #db_name: DB_Name;
   #storeName: string;
   #index_db: IDBDatabase | null = null;
@@ -84,10 +84,8 @@ class DB {
       }
       const q = dbsMap.get(this.#db_name)?.upgrade_Q;
       if (q && this.#storeName in q) {
-        if (q[this.#storeName]) {
-          q[this.#storeName]!();
-          delete q[this.#storeName];
-        }
+        q[this.#storeName]!();
+        delete q[this.#storeName];
       }
       this.#isBumpingVersion = false;
     };
@@ -135,7 +133,7 @@ class DB {
     }
   }
 
-  #process_get_request<T>(
+  #process_get<T>(
     resolve: (value: T) => void,
     reject: Reject,
     key: IDBValidKey,
@@ -154,7 +152,7 @@ class DB {
       retryCount = retryCount + 1;
       this.#handleRetry(
         err,
-        () => this.#process_get_request(resolve, reject, key, retryCount),
+        () => this.#process_get(resolve, reject, key, retryCount),
         retryCount,
       );
     }
@@ -184,7 +182,7 @@ class DB {
   }
 
   #process_get_keys(
-    resolve: (value: unknown | PromiseLike<unknown>) => void,
+    resolve: (value: Array<IDBValidKey>) => void,
     reject: Reject,
     retryCount = -1,
   ) {
@@ -206,30 +204,64 @@ class DB {
     }
   }
 
-  #process_set_request(key: IDBValidKey, value: unknown, retryCount = -1) {
+  #process_set(
+    resolve: (value: true) => void,
+    reject: Reject,
+    key: IDBValidKey,
+    value: unknown,
+    retryCount = -1,
+  ) {
     if (!this.#index_db) return;
     try {
       const req = this.#index_db
         .transaction([this.#storeName], "readwrite")
         .objectStore(this.#storeName)
         .put(value, key);
-      req.onsuccess = () => {};
-      req.onerror = (err) => {
-        logError(err, {
-          when: `process_set_request - ${key}`,
-        });
-      };
+      req.onsuccess = () => resolve(true);
+      req.onerror = (e) => reject(e);
     } catch (err) {
       retryCount = retryCount + 1;
       this.#handleRetry(
         err,
-        () => this.#process_set_request(key, value, retryCount),
+        () => this.#process_set(resolve, reject, key, value, retryCount),
         retryCount,
       );
     }
   }
 
-  #process_delete_request(key: IDBValidKey, retryCount = -1) {
+  #process_set_multiple<T extends MultiSetItem<unknown>>(
+    resolve: (value: true) => void,
+    reject: Reject,
+    items: Array<T>,
+    retryCount = -1,
+  ) {
+    if (!this.#index_db) return;
+
+    try {
+      const tx = this.#index_db.transaction([this.#storeName], "readwrite");
+      if (items.length > 0) {
+        for (const item of items) {
+          tx.objectStore(this.#storeName).put(item.val, item.key);
+          tx.onerror = (e) => reject(e);
+        }
+        tx.oncomplete = () => resolve(true);
+      }
+    } catch (err) {
+      retryCount = retryCount + 1;
+      this.#handleRetry(
+        err,
+        () => this.#process_set_multiple(resolve, reject, items, retryCount),
+        retryCount,
+      );
+    }
+  }
+
+  #process_delete(
+    resolve: (value: true) => void,
+    reject: Reject,
+    key: IDBValidKey,
+    retryCount = -1,
+  ) {
     if (!this.#index_db) {
       return;
     }
@@ -238,23 +270,23 @@ class DB {
         .transaction([this.#storeName], "readwrite")
         .objectStore(this.#storeName)
         .delete(key);
-      req.onsuccess = () => {};
-      req.onerror = (err) => {
-        logError(err, {
-          when: `process_delete_request - ${key}`,
-        });
-      };
+      req.onsuccess = () => resolve(true);
+      req.onerror = (e) => reject(e);
     } catch (err) {
       retryCount = retryCount + 1;
       this.#handleRetry(
         err,
-        () => this.#process_delete_request(key, retryCount),
+        () => this.#process_delete(resolve, reject, key, retryCount),
         retryCount,
       );
     }
   }
 
-  #process_db_clear(retryCount = -1): void {
+  #process_db_clear(
+    resolve: (value: true) => void,
+    reject: Reject,
+    retryCount = -1,
+  ) {
     if (!this.#index_db) {
       return;
     }
@@ -265,52 +297,13 @@ class DB {
         .objectStore(this.#storeName)
         .clear();
 
-      req.onsuccess = () => {
-        console.log("cleared store - ", this.#storeName);
-      };
-      req.onerror = (err) => {
-        logError(err, {
-          when: "process_db_clear",
-        });
-      };
+      req.onsuccess = () => resolve(true);
+      req.onerror = (e) => reject(e);
     } catch (err) {
       retryCount = retryCount + 1;
       this.#handleRetry(
         err,
-        () => this.#process_db_clear(retryCount),
-        retryCount,
-      );
-    }
-  }
-
-  #process_set_multiple<T extends MultiSetItem<unknown>>(
-    resolve: (value: boolean | PromiseLike<boolean>) => void,
-    reject: (val: string) => void,
-    items: Array<T>,
-    retryCount = -1,
-  ) {
-    if (!this.#index_db) {
-      return;
-    }
-
-    try {
-      const tx = this.#index_db!.transaction([this.#storeName], "readwrite");
-      if (items.length > 0) {
-        for (const item of items) {
-          tx.objectStore(this.#storeName).put(item.val, item.key);
-          tx.onerror = () => {
-            reject(`Error in setting multiple items - at ${item.key}`);
-          };
-        }
-        tx.oncomplete = () => {
-          resolve(true);
-        };
-      }
-    } catch (err) {
-      retryCount = retryCount + 1;
-      this.#handleRetry(
-        err,
-        () => this.#process_set_multiple(resolve, reject, items, retryCount),
+        () => this.#process_db_clear(resolve, reject, retryCount),
         retryCount,
       );
     }
@@ -397,58 +390,72 @@ class DB {
   }
 
   get<T>(key: IDBValidKey): Promise<T> {
-    return new Promise((resolve, reject: Reject) => {
-      this.#runOrQueue(() => this.#process_get_request(resolve, reject, key));
+    return new Promise((resolve, reject) => {
+      this.#runOrQueue(() => this.#process_get(resolve, reject, key));
     });
   }
 
   getValues<T extends Array<any>>(): Promise<T> {
-    return new Promise((resolve, reject: Reject) => {
+    return new Promise((resolve, reject) => {
       this.#runOrQueue(() => this.#process_get_all(resolve, reject));
     });
   }
 
   getKeys(): Promise<Array<IDBValidKey>> {
     return new Promise((resolve, reject) => {
-      this.#runOrQueue(() => this.#process_get_keys(resolve));
+      this.#runOrQueue(() => this.#process_get_keys(resolve, reject));
     });
   }
 
-  set(key: IDBValidKey, value: unknown): void {
-    this.#runOrQueue(() => this.#process_set_request(key, value));
+  set(key: IDBValidKey, value: unknown): Promise<true> {
+    return new Promise((resolve, reject) => {
+      this.#runOrQueue(() => this.#process_set(resolve, reject, key, value));
+    });
   }
 
-  setMultiple(items: Array<MultiSetItem<unknown>>) {
-    return new Promise<boolean>((resolve, reject) => {
+  setMultiple(items: Array<MultiSetItem<unknown>>): Promise<true> {
+    return new Promise((resolve, reject) => {
       this.#runOrQueue(() =>
         this.#process_set_multiple(resolve, reject, items),
       );
     });
   }
 
-  del(key: IDBValidKey): void {
-    this.#runOrQueue(() => this.#process_delete_request(key));
-  }
-
-  clearStore(): void {
-    this.#runOrQueue(() => this.#process_db_clear());
-  }
-
-  _dropDB(): void {
-    if (this.#isBumpingVersion === true) {
-      return;
-    }
-    console.log("dropping db - ", this.#db_name);
-
-    this.#index_db?.close();
-    this.#index_db = null;
-    this.#idb_request = null;
-    dbsMap.set(this.#db_name, {
-      idb: this.#index_db!,
-      req: this.#idb_request!,
-      upgrade_Q: {},
+  del(key: IDBValidKey): Promise<true> {
+    return new Promise((resolve, reject) => {
+      this.#runOrQueue(() => this.#process_delete(resolve, reject, key));
     });
+  }
 
-    indexedDB.deleteDatabase(this.#db_name);
+  clearStore(): Promise<true> {
+    return new Promise((resolve, reject) => {
+      this.#runOrQueue(() => this.#process_db_clear(resolve, reject));
+    });
+  }
+
+  dropDB(): Promise<true> {
+    return new Promise((resolve, reject) => {
+      if (this.#isBumpingVersion === true) {
+        reject(new Event("Cannot drop DB while bumping version"));
+        return;
+      }
+
+      this.#index_db?.close();
+
+      const deleteRequest = indexedDB.deleteDatabase(this.#db_name);
+
+      deleteRequest.onsuccess = () => {
+        this.#index_db = null;
+        this.#idb_request = null;
+        dbsMap.set(this.#db_name, {
+          idb: this.#index_db!,
+          req: this.#idb_request!,
+          upgrade_Q: {},
+        });
+        resolve(true);
+      };
+
+      deleteRequest.onerror = (e) => reject(e);
+    });
   }
 }
