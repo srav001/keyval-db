@@ -3,9 +3,6 @@ node_modules/
 
 # Build outputs
 build/
-*.js
-*.js.map
-*.d.ts
 
 # TypeScript build info files
 *.tsbuildinfo
