@@ -2,7 +2,7 @@
  * Object representing a key-value pair for batch operations
  * @template T - The type of the value being stored
  */
-type MultiSetItem<T> = {
+export type MultiSetItem<T> = {
   /** The key to store the value under */
   key: IDBValidKey;
   /** The value to store */
@@ -22,19 +22,19 @@ type Reject = (err: Event) => void;
 
 /**
  * A class for interacting with IndexedDB through a simple key-value interface
- * 
+ *
  * This class provides a Promise-based API for storing and retrieving data from
  * IndexedDB, with automatic retry logic and connection management.
- * 
+ *
  * @example
  * ```typescript
  * const db = new IDB('myDatabase', 'myStore');
- * 
+ *
  * // Store a value
  * await db.set('key1', { data: 'example' });
- * 
+ *
  * // Retrieve a value
- * const data = await db.get<{ data: string }>('key1'); 
+ * const data = await db.get<{ data: string }>('key1');
  * ```
  */
 export class IDB {

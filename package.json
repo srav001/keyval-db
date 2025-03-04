@@ -1,6 +1,6 @@
 {
   "name": "keyval-db",
-  "version": "0.4.0",
+  "version": "0.4.5",
   "description": "Indexdb, the way God intended it to be.",
   "files": [
     "dist"
