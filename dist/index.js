@@ -1,1 +1,0 @@
-export { IDB } from "./idb";
