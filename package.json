@@ -1,35 +1,36 @@
 {
-  "name": "keyval-db",
-  "version": "0.5.0",
-  "description": "Indexdb, the way God intended it to be.",
-  "files": [
-    "dist"
-  ],
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/srav001/keyval-db.git"
-  },
-  "keywords": [
-    "Indexdb",
-    "index-db",
-    "idb",
-    "keyval",
-    "key-val"
-  ],
-  "author": "Sravan Suresh",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/srav001/keyval-db/issues"
-  },
-  "homepage": "https://github.com/srav001/keyval-db#readme",
-  "devDependencies": {
-    "prettier": "^3.5.3",
-    "prettier-plugin-organize-imports": "^4.1.0",
-    "typescript": "^5.8.2"
-  }
+	"name": "keyval-db",
+	"version": "0.5.1",
+	"description": "Indexdb, the way God intended it to be.",
+	"files": [
+		"dist"
+	],
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"scripts": {
+		"build": "npx tsc --build",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/srav001/keyval-db.git"
+	},
+	"keywords": [
+		"Indexdb",
+		"index-db",
+		"idb",
+		"keyval",
+		"key-val"
+	],
+	"author": "Sravan Suresh",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/srav001/keyval-db/issues"
+	},
+	"homepage": "https://github.com/srav001/keyval-db#readme",
+	"devDependencies": {
+		"prettier": "^3.5.3",
+		"prettier-plugin-organize-imports": "^4.1.0",
+		"typescript": "^5.8.2"
+	}
 }

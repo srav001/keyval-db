@@ -2,7 +2,7 @@
  * Object representing a key-value pair for batch operations
  * @template T - The type of the value being stored
  */
-type MultiSetItem<T> = {
+export type MultiSetItem<T> = {
     /** The key to store the value under */
     key: IDBValidKey;
     /** The value to store */

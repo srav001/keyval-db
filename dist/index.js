@@ -1,1 +1,1 @@
-export { IDB } from "./idb";
+export { IDB } from './idb';

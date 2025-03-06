@@ -54,7 +54,7 @@ export class IDB {
             dbsMap.set(db_name, {
                 idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
                 req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-                upgrade_Q: {},
+                upgrade_Q: {}
             });
             __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
         }
@@ -142,7 +142,7 @@ export class IDB {
         return new Promise((resolve, reject) => {
             var _a;
             if (__classPrivateFieldGet(this, _IDB_isBumpingVersion, "f") === true) {
-                reject(new Event("Cannot drop DB while bumping version"));
+                reject(new Event('Cannot drop DB while bumping version'));
                 return;
             }
             (_a = __classPrivateFieldGet(this, _IDB_index_db, "f")) === null || _a === void 0 ? void 0 : _a.close();
@@ -153,7 +153,7 @@ export class IDB {
                 dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
                     idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
                     req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-                    upgrade_Q: {},
+                    upgrade_Q: {}
                 });
                 resolve(true);
             };
@@ -172,7 +172,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
         idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
         req: item.req,
-        upgrade_Q: item.upgrade_Q,
+        upgrade_Q: item.upgrade_Q
     });
 }, _IDB_completeObjectStoreSetup = function _IDB_completeObjectStoreSetup() {
     if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
@@ -186,14 +186,14 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
 }, _IDB_setupRequests = function _IDB_setupRequests() {
     if (!__classPrivateFieldGet(this, _IDB_idb_request, "f"))
         return;
-    if (__classPrivateFieldGet(this, _IDB_idb_request, "f").readyState === "done") {
+    if (__classPrivateFieldGet(this, _IDB_idb_request, "f").readyState === 'done') {
         __classPrivateFieldSet(this, _IDB_index_db, __classPrivateFieldGet(this, _IDB_idb_request, "f").result, "f");
         __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_completeObjectStoreSetup).call(this);
         const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
         dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
             idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
             req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-            upgrade_Q: item.upgrade_Q,
+            upgrade_Q: item.upgrade_Q
         });
         return;
     }
@@ -235,25 +235,25 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
         idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
         req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-        upgrade_Q: item.upgrade_Q,
+        upgrade_Q: item.upgrade_Q
     });
     __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
 }, _IDB_handleRetry = function _IDB_handleRetry(err, cb, retryCount) {
-    if (retryCount < 3 &&
-        err instanceof DOMException &&
-        err.message ===
-            "Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.") {
-        __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(cb);
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleCloseError).call(this);
+    if (retryCount < 3 && err instanceof DOMException) {
+        if (err.message.includes('The database connection is closing')) {
+            __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(cb);
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleCloseError).call(this);
+        }
+        else if (err.message.includes('One of the specified object stores was not found')) {
+            __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(cb);
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this);
+        }
     }
 }, _IDB_process_get = function _IDB_process_get(resolve, reject, key, retryCount = -1) {
     if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
         return;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readonly")
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .get(key);
+        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).get(key);
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
     }
@@ -265,10 +265,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
         return;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readonly")
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .getAll();
+        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).getAll();
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
     }
@@ -281,7 +278,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
         return;
     try {
         const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readonly")
+            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly')
             .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
             .getAllKeys();
         req.onsuccess = () => resolve(req.result);
@@ -296,7 +293,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
         return;
     try {
         const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readwrite")
+            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite')
             .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
             .put(value, key);
         req.onsuccess = () => resolve(true);
@@ -310,7 +307,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
         return;
     try {
-        const tx = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readwrite");
+        const tx = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite');
         if (items.length > 0) {
             for (const item of items) {
                 tx.objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).put(item.value, item.key);
@@ -329,7 +326,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     }
     try {
         const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readwrite")
+            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite')
             .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
             .delete(key);
         req.onsuccess = () => resolve(true);
@@ -344,10 +341,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
         return;
     }
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], "readwrite")
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .clear();
+        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).clear();
         req.onsuccess = () => resolve(true);
         req.onerror = (e) => reject(e);
     }
@@ -389,7 +383,7 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
         idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
         req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-        upgrade_Q: item.upgrade_Q,
+        upgrade_Q: item.upgrade_Q
     });
     __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
 }, _IDB_runOrQueue = function _IDB_runOrQueue(fn) {
