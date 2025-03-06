@@ -1,0 +1,13 @@
+{
+  "semi": true,
+  "tabWidth": 4,
+  "useTabs": true,
+  "printWidth": 120,
+  "singleQuote": true,
+  "bracketSameLine": true,
+  "trailingComma": "none",
+  "pluginSearchDirs": ["."],
+  "plugins": ["prettier-plugin-organize-imports"],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true
+}
