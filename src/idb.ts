@@ -141,15 +141,19 @@ export class IDB {
 		this.#setupRequests();
 	}
 
-	#handleRetry(err: unknown, cb: () => void, retryCount: number) {
-		if (retryCount < 3 && err instanceof DOMException) {
-			if (err.message.includes('The database connection is closing')) {
+	#handleRetry(err: unknown, cb: () => void, retryCount: number, reject: Reject) {
+		if (retryCount < 5 && err instanceof DOMException) {
+			if (err.message.includes('database connection is closing')) {
 				this.#db_prep_Q.add(cb);
 				this.#handleCloseError();
-			} else if (err.message.includes('One of the specified object stores was not found')) {
+			} else if (err.message.includes('the specified object stores was not found')) {
 				this.#db_prep_Q.add(cb);
 				this.#objectStoreExists();
+			} else {
+				reject(err as unknown as Event);
 			}
+		} else {
+			reject(err as Event);
 		}
 	}
 
@@ -162,7 +166,7 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get(resolve, reject, key, retryCount), retryCount);
+			this.#handleRetry(err, () => this.#process_get(resolve, reject, key, retryCount), retryCount, reject);
 		}
 	}
 
@@ -174,7 +178,7 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get_all(resolve, reject, retryCount), retryCount);
+			this.#handleRetry(err, () => this.#process_get_all(resolve, reject, retryCount), retryCount, reject);
 		}
 	}
 
@@ -189,7 +193,7 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get_keys(resolve, reject, retryCount), retryCount);
+			this.#handleRetry(err, () => this.#process_get_keys(resolve, reject, retryCount), retryCount, reject);
 		}
 	}
 
@@ -204,7 +208,12 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_set(resolve, reject, key, value, retryCount), retryCount);
+			this.#handleRetry(
+				err,
+				() => this.#process_set(resolve, reject, key, value, retryCount),
+				retryCount,
+				reject
+			);
 		}
 	}
 
@@ -227,7 +236,12 @@ export class IDB {
 			}
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_set_multiple(resolve, reject, items, retryCount), retryCount);
+			this.#handleRetry(
+				err,
+				() => this.#process_set_multiple(resolve, reject, items, retryCount),
+				retryCount,
+				reject
+			);
 		}
 	}
 
@@ -244,7 +258,7 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_delete(resolve, reject, key, retryCount), retryCount);
+			this.#handleRetry(err, () => this.#process_delete(resolve, reject, key, retryCount), retryCount, reject);
 		}
 	}
 
@@ -260,7 +274,7 @@ export class IDB {
 			req.onerror = (e) => reject(e);
 		} catch (err) {
 			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_db_clear(resolve, reject, retryCount), retryCount);
+			this.#handleRetry(err, () => this.#process_db_clear(resolve, reject, retryCount), retryCount, reject);
 		}
 	}
 
