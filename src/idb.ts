@@ -8,15 +8,19 @@ export type MultiSetItem<T> = {
 	/** The value to store */
 	value: T;
 };
-
-type IDB_Item = {
-	idb: IDBDatabase;
-	req: IDBOpenDBRequest;
-	upgrade_Q: Record<string, () => void>;
-};
-
+// storesMap: Map<string, IDBObjectStore>;
 type DB_Name = string;
-const dbsMap = new Map<DB_Name, IDB_Item>();
+const dbsMap = new Map<
+	DB_Name,
+	{
+		req: IDBOpenDBRequest;
+		db: IDBDatabase | undefined;
+		stores_Q: Set<() => boolean>;
+		status: 'init' | 'connecting' | 'connected' | 'upgrading';
+	}
+>();
+
+window.dbsMap = dbsMap;
 
 type Reject = (err: Event) => void;
 
@@ -40,114 +44,195 @@ type Reject = (err: Event) => void;
 export class IDB {
 	#db_name: DB_Name;
 	#storeName: string;
-	#index_db: IDBDatabase | null = null;
-	#idb_request: IDBOpenDBRequest | null = null;
+
 	#isBumpingVersion = false;
-	#isReconnecting = false; //  prevent duplicate reconnections
-	#db_prep_Q = new Set<() => void>();
 	#hasObjectStore = false;
 
+	#db_Q = new Set<() => void>();
+
+	async #runStores_Q() {
+		const item = dbsMap.get(this.#db_name)!;
+
+		console.log('runStores_Q', this.#db_name, this.#storeName);
+		for (const fn of item.stores_Q) {
+			const v = fn();
+			if (v === false) {
+				console.log('false', this.#db_name, this.#storeName);
+				break;
+			} else {
+				item.stores_Q.delete(fn);
+			}
+		}
+	}
+
+	#update_db(idb: IDBDatabase) {
+		dbsMap.get(this.#db_name)!.db = idb;
+		if (this.#db_name === 'cohesiv-db') {
+			console.log('#update_db', this.#storeName);
+		}
+	}
+
 	#updateDBinMap(evnt: Event) {
-		this.#index_db = (
+		const idb = (
 			evnt.target as unknown as {
 				result: IDBDatabase;
 			}
 		).result;
 
-		if (!this.#index_db) return;
-
-		if (this.#index_db.version === 0) {
-			this.#isBumpingVersion = true;
-		}
-		const item = dbsMap.get(this.#db_name)!;
-		dbsMap.set(this.#db_name, {
-			idb: this.#index_db,
-			req: item.req,
-			upgrade_Q: item.upgrade_Q
-		});
-	}
-
-	#completeObjectStoreSetup() {
-		if (!this.#index_db) {
+		if (!idb) {
 			return;
 		}
-		this.#isReconnecting = false; // reset reconnect flag on success
+
+		if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+			console.log('#updateDBinMap', idb.objectStoreNames, idb.objectStoreNames.length, idb.version);
+		}
+
+		this.#update_db(idb);
+	}
+
+	#markObjectStoreConnected(): boolean {
 		this.#hasObjectStore = true;
 		this.#isBumpingVersion = false;
 
-		this.#db_prep_Q.forEach((fn) => fn());
-		this.#db_prep_Q.clear();
+		if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+			console.log('#connected');
+		}
+		this.#db_Q.forEach((fn) => fn());
+		this.#db_Q.clear();
+
+		const value = dbsMap.get(this.#db_name)!;
+		if (value.status !== 'connected') {
+			value.status = 'connected';
+			dbsMap.set(this.#db_name, value);
+		}
+
+		return true;
 	}
 
-	#setupRequests() {
-		if (!this.#idb_request) return;
+	#setupRequests(req: IDBOpenDBRequest) {
+		if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+			console.log('setup');
+		}
 
-		if (this.#idb_request.readyState === 'done') {
-			this.#index_db = this.#idb_request.result;
-			this.#completeObjectStoreSetup();
-			const item = dbsMap.get(this.#db_name)!;
-			dbsMap.set(this.#db_name, {
-				idb: this.#index_db,
-				req: this.#idb_request,
-				upgrade_Q: item.upgrade_Q
-			});
+		const item = dbsMap.get(this.#db_name)!;
+		item.status = 'connecting';
+		dbsMap.set(this.#db_name, item);
+
+		if (req.readyState === 'done') {
+			if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+				console.log('done');
+			}
+
+			this.#update_db(req.result);
+			this.#markObjectStoreConnected();
 
 			return;
 		}
 
-		this.#idb_request.onupgradeneeded = (event) => {
-			this.#updateDBinMap(event);
-			if (this.#index_db && this.#index_db.objectStoreNames.length === 0) {
-				if (!this.#index_db.objectStoreNames.contains(this.#storeName)) {
-					this.#index_db.createObjectStore(this.#storeName);
-					delete dbsMap.get(this.#db_name)!.upgrade_Q[this.#storeName];
+		req.onupgradeneeded = (event) => {
+			if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+				console.log('onupgradeneeded');
+			}
+
+			const idb = (
+				event.target as unknown as {
+					result: IDBDatabase;
 				}
+			).result;
+
+			if (!idb) return;
+
+			if (idb.objectStoreNames.length === 0 || idb.objectStoreNames.contains(this.#storeName) === false) {
+				idb.createObjectStore(this.#storeName);
 				this.#isBumpingVersion = false;
+
+				if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+					console.log('createObjectStore');
+				}
+
 				return;
 			}
-			const q = dbsMap.get(this.#db_name)?.upgrade_Q;
-			if (q && this.#storeName in q) {
-				q[this.#storeName]!();
-				delete q[this.#storeName];
+		};
+
+		req.onsuccess = (event) => {
+			if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+				console.log('onsuccess');
 			}
-			this.#isBumpingVersion = false;
-		};
-
-		this.#idb_request.onsuccess = (event) => {
 			this.#updateDBinMap(event);
-			this.#completeObjectStoreSetup();
+			this.#markObjectStoreConnected();
+			this.#runStores_Q();
 		};
 
-		this.#idb_request.onerror = (event) => {
+		req.onerror = (event) => {
+			if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+				console.log('onerror');
+			}
+
 			this.#updateDBinMap(event);
 			this.#objectStoreExists();
 		};
 	}
 
-	#handleCloseError() {
-		// safety measure: only one reconnection at a time.
-		if (this.#isReconnecting) return;
-		this.#isReconnecting = true;
-
-		if (!this.#index_db) return;
-		this.#idb_request = indexedDB.open(this.#db_name, this.#index_db.version + 1);
+	#bumpVersion() {
+		this.#isBumpingVersion = true;
 
 		const item = dbsMap.get(this.#db_name)!;
-		dbsMap.set(this.#db_name, {
-			idb: this.#index_db,
-			req: this.#idb_request,
-			upgrade_Q: item.upgrade_Q
-		});
-		this.#setupRequests();
+		const idb = item?.db;
+		if (!idb) {
+			return;
+		}
+		item.status = 'upgrading';
+		console.log('bumping', this.#db_name, idb.version);
+		idb.close();
+		dbsMap.set(this.#db_name, item);
+
+		const req = indexedDB.open(this.#db_name, idb.version + 1);
+		this.#setupRequests(req);
+	}
+
+	#objectStoreExists(): boolean {
+		const item = dbsMap.get(this.#db_name);
+		const idb = item?.db;
+		if (!idb) {
+			this.#pre_init();
+			return false;
+		}
+
+		if (idb.objectStoreNames.contains(this.#storeName) === false) {
+			item.stores_Q.add(() => {
+				const dbItem = dbsMap.get(this.#db_name);
+				const idb = dbItem?.db;
+				if (!idb) {
+					return false;
+				}
+				if (idb.objectStoreNames.contains(this.#storeName) === false) {
+					idb.createObjectStore(this.#storeName);
+					dbItem.db = idb;
+					dbsMap.set(this.#db_name, dbItem);
+					this.#markObjectStoreConnected();
+				}
+				return true;
+			});
+
+			this.#bumpVersion();
+			return false;
+		} else {
+			this.#markObjectStoreConnected();
+			return true;
+		}
 	}
 
 	#handleRetry(err: unknown, cb: () => void, retryCount: number, reject: Reject) {
 		if (retryCount < 5 && err instanceof DOMException) {
-			if (err.message.includes('database connection is closing')) {
-				this.#db_prep_Q.add(cb);
-				this.#handleCloseError();
-			} else if (err.message.includes('the specified object stores was not found')) {
-				this.#db_prep_Q.add(cb);
+			if (
+				err.message.includes('database connection is closing') ||
+				err.message.includes('the specified object stores was not found')
+			) {
+				this.#db_Q.add(cb);
+				const item = dbsMap.get(this.#db_name)!;
+				item.status = 'upgrading';
+				dbsMap.set(this.#db_name, item);
+
 				this.#objectStoreExists();
 			} else {
 				reject(err as unknown as Event);
@@ -157,23 +242,46 @@ export class IDB {
 		}
 	}
 
+	#handleNoDB(cb: () => void, retryCount: number, reject: Reject) {
+		if (retryCount < 5) {
+			this.#db_Q.add(cb);
+			this.#objectStoreExists();
+		} else {
+			reject(new Event('Database not found'));
+		}
+	}
+
 	#process_get<T>(resolve: (value: T) => void, reject: Reject, key: IDBValidKey, retryCount = -1) {
-		if (!this.#index_db) return;
 		try {
-			const req = this.#index_db.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).get(key);
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				retryCount = retryCount + 1;
+				return this.#handleNoDB(() => this.#process_get(resolve, reject, key, retryCount), retryCount, reject);
+			}
+
+			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).get(key);
 
 			req.onsuccess = () => resolve(req.result);
 			req.onerror = (e) => reject(e);
 		} catch (err) {
+			// @ts-expect-error SHUT IT
+			console.log(this.#db_name, this.#storeName, err.message);
+
 			retryCount = retryCount + 1;
+			console.log(retryCount, key);
+
 			this.#handleRetry(err, () => this.#process_get(resolve, reject, key, retryCount), retryCount, reject);
 		}
 	}
 
 	#process_get_all<T>(resolve: (value: T) => void, reject: Reject, retryCount = -1) {
-		if (!this.#index_db) return;
 		try {
-			const req = this.#index_db.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).getAll();
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(() => this.#process_get_all(resolve, reject, retryCount), retryCount, reject);
+			}
+
+			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).getAll();
 			req.onsuccess = () => resolve(req.result as T);
 			req.onerror = (e) => reject(e);
 		} catch (err) {
@@ -183,12 +291,13 @@ export class IDB {
 	}
 
 	#process_get_keys(resolve: (value: Array<IDBValidKey>) => void, reject: Reject, retryCount = -1) {
-		if (!this.#index_db) return;
 		try {
-			const req = this.#index_db
-				.transaction([this.#storeName], 'readonly')
-				.objectStore(this.#storeName)
-				.getAllKeys();
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(() => this.#process_get_keys(resolve, reject, retryCount), retryCount, reject);
+			}
+
+			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).getAllKeys();
 			req.onsuccess = () => resolve(req.result);
 			req.onerror = (e) => reject(e);
 		} catch (err) {
@@ -198,12 +307,17 @@ export class IDB {
 	}
 
 	#process_set(resolve: (value: true) => void, reject: Reject, key: IDBValidKey, value: unknown, retryCount = -1) {
-		if (!this.#index_db) return;
 		try {
-			const req = this.#index_db
-				.transaction([this.#storeName], 'readwrite')
-				.objectStore(this.#storeName)
-				.put(value, key);
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(
+					() => this.#process_set(resolve, reject, key, value, retryCount),
+					retryCount,
+					reject
+				);
+			}
+
+			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).put(value, key);
 			req.onsuccess = () => resolve(true);
 			req.onerror = (e) => reject(e);
 		} catch (err) {
@@ -223,10 +337,17 @@ export class IDB {
 		items: Array<T>,
 		retryCount = -1
 	) {
-		if (!this.#index_db) return;
-
 		try {
-			const tx = this.#index_db.transaction([this.#storeName], 'readwrite');
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(
+					() => this.#process_set_multiple(resolve, reject, items, retryCount),
+					retryCount,
+					reject
+				);
+			}
+
+			const tx = idb.transaction([this.#storeName], 'readwrite');
 			if (items.length > 0) {
 				for (const item of items) {
 					tx.objectStore(this.#storeName).put(item.value, item.key);
@@ -246,14 +367,16 @@ export class IDB {
 	}
 
 	#process_delete(resolve: (value: true) => void, reject: Reject, key: IDBValidKey, retryCount = -1) {
-		if (!this.#index_db) {
-			return;
-		}
 		try {
-			const req = this.#index_db
-				.transaction([this.#storeName], 'readwrite')
-				.objectStore(this.#storeName)
-				.delete(key);
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(
+					() => this.#process_delete(resolve, reject, key, retryCount),
+					retryCount,
+					reject
+				);
+			}
+			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).delete(key);
 			req.onsuccess = () => resolve(true);
 			req.onerror = (e) => reject(e);
 		} catch (err) {
@@ -263,12 +386,13 @@ export class IDB {
 	}
 
 	#process_db_clear(resolve: (value: true) => void, reject: Reject, retryCount = -1) {
-		if (!this.#index_db) {
-			return;
-		}
-
 		try {
-			const req = this.#index_db.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).clear();
+			const idb = dbsMap.get(this.#db_name)?.db;
+			if (!idb) {
+				return this.#handleNoDB(() => this.#process_db_clear(resolve, reject, retryCount), retryCount, reject);
+			}
+
+			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).clear();
 
 			req.onsuccess = () => resolve(true);
 			req.onerror = (e) => reject(e);
@@ -278,49 +402,64 @@ export class IDB {
 		}
 	}
 
-	#objectStoreExists() {
-		if (!this.#index_db) {
-			const idb = dbsMap.get(this.#db_name)?.idb;
-			if (!idb) {
+	async #init() {
+		let req: IDBOpenDBRequest;
+		let has_db: IDBDatabaseInfo | undefined;
+
+		const dbs = await indexedDB.databases();
+		if (dbs.length === 0) {
+			req = indexedDB.open(this.#db_name, 1);
+		} else {
+			const item = dbsMap.get(this.#db_name)!;
+			if (item.status !== 'init') {
+				if (item.status === 'connected') {
+					return this.#objectStoreExists();
+				}
+				item.stores_Q.add(() => this.#objectStoreExists());
 				return;
+			} else {
+				has_db = dbs.find((db) => db.name === this.#db_name);
+				if (has_db) {
+					if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+						console.log(item);
+					}
+					has_db = undefined;
+					req = indexedDB.open(this.#db_name);
+				} else {
+					req = indexedDB.open(this.#db_name, 1);
+				}
 			}
-			this.#index_db = idb;
 		}
 
-		if (this.#index_db.objectStoreNames.contains(this.#storeName) === false) {
+		if (!has_db) {
 			const item = dbsMap.get(this.#db_name)!;
+			item.req = req;
+			dbsMap.set(this.#db_name, item);
 
-			if (item.upgrade_Q) {
-				item.upgrade_Q[this.#storeName] = () => {
-					if (this.#index_db!.objectStoreNames.contains(this.#storeName) === false) {
-						this.#index_db!.createObjectStore(this.#storeName);
-					}
-				};
-
-				this.#bumpVersion();
+			if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+				console.log('init 2');
 			}
-		} else {
-			this.#completeObjectStoreSetup();
+
+			this.#setupRequests(req);
+			return;
 		}
 	}
 
-	#bumpVersion() {
-		if (!this.#index_db) {
-			return;
+	#pre_init() {
+		if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+			console.log('actual init');
 		}
-
-		this.#isBumpingVersion = true;
-		this.#index_db.close();
-		this.#idb_request = indexedDB.open(this.#db_name, this.#index_db.version + 1);
-
-		const item = dbsMap.get(this.#db_name)!;
-		dbsMap.set(this.#db_name, {
-			idb: this.#index_db,
-			req: this.#idb_request,
-			upgrade_Q: item.upgrade_Q
-		});
-
-		this.#setupRequests();
+		const item = dbsMap.get(this.#db_name);
+		if (!item) {
+			dbsMap.set(this.#db_name, {
+				db: undefined,
+				// @ts-expect-error this is fine for now
+				req: undefined,
+				stores_Q: new Set(),
+				status: 'init'
+			});
+		}
+		this.#init();
 	}
 
 	/**
@@ -331,28 +470,21 @@ export class IDB {
 	constructor(db_name: DB_Name, storeName: string) {
 		this.#db_name = db_name;
 		this.#storeName = storeName;
-		this.#index_db = dbsMap.get(db_name)?.idb as IDBDatabase;
-		this.#idb_request = dbsMap.get(db_name)?.req as IDBOpenDBRequest;
 
-		if (!this.#idb_request) {
-			this.#idb_request = indexedDB.open(db_name);
-			dbsMap.set(db_name, {
-				idb: this.#index_db!,
-				req: this.#idb_request,
-				upgrade_Q: {}
-			});
-			this.#setupRequests();
-		} else {
-			this.#objectStoreExists();
-		}
+		this.#pre_init();
 	}
 
 	#runOrQueue(fn: () => void) {
-		if (this.#hasObjectStore === false || this.#isBumpingVersion === true) {
-			this.#db_prep_Q.add(fn);
-			if (this.#hasObjectStore === false && this.#isBumpingVersion === false) {
-				this.#setupRequests();
-			}
+		const item = dbsMap.get(this.#db_name);
+		if (this.#db_name === 'cohesiv-db' && this.#storeName === 'store') {
+			console.log(item?.status);
+		}
+		if (
+			(item && item.status !== 'connected') ||
+			this.#hasObjectStore === false ||
+			this.#isBumpingVersion === true
+		) {
+			this.#db_Q.add(fn);
 		} else {
 			fn();
 		}
@@ -375,6 +507,7 @@ export class IDB {
 	 * @template T - The type of array to be returned, must extend Array
 	 * @returns A promise that resolves to an array of all values in the database
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getValues<T extends Array<any>>(): Promise<T> {
 		return new Promise((resolve, reject) => {
 			this.#runOrQueue(() => this.#process_get_all(resolve, reject));
@@ -448,21 +581,22 @@ export class IDB {
 				return;
 			}
 
-			this.#index_db?.close();
+			const idb = dbsMap.get(this.#db_name)?.db;
+			console.log('drop', this.#db_name, this.#storeName);
+			idb?.close();
 
 			const deleteRequest = indexedDB.deleteDatabase(this.#db_name);
-
 			deleteRequest.onsuccess = () => {
-				this.#index_db = null;
-				this.#idb_request = null;
-				dbsMap.set(this.#db_name, {
-					idb: this.#index_db!,
-					req: this.#idb_request!,
-					upgrade_Q: {}
-				});
+				const item = dbsMap.get(this.#db_name);
+				if (!item) {
+					return;
+				}
 				resolve(true);
-			};
 
+				if (idb?.objectStoreNames.length === 0) {
+					dbsMap.delete(this.#db_name);
+				}
+			};
 			deleteRequest.onerror = (e) => reject(e);
 		});
 	}
