@@ -45,7 +45,6 @@ export class IDB {
 	#db_name: DB_Name;
 	#storeName: string;
 
-	#isBumpingVersion = false;
 	#hasObjectStore = false;
 
 	#db_Q = new Set<() => void>();
@@ -91,7 +90,6 @@ export class IDB {
 
 	#markObjectStoreConnected(): boolean {
 		this.#hasObjectStore = true;
-		this.#isBumpingVersion = false;
 
 		for (const fn of this.#db_Q) {
 			this.#db_Q.delete(fn);
@@ -124,7 +122,6 @@ export class IDB {
 
 			if (idb.objectStoreNames.length === 0 || idb.objectStoreNames.contains(this.#storeName) === false) {
 				idb.createObjectStore(this.#storeName);
-				this.#isBumpingVersion = false;
 
 				return;
 			}
@@ -143,8 +140,6 @@ export class IDB {
 	}
 
 	#bumpVersion() {
-		this.#isBumpingVersion = true;
-
 		const item = dbsMap.get(this.#db_name)!;
 		const idb = item?.db;
 		if (!idb) {
@@ -394,11 +389,7 @@ export class IDB {
 
 	#runOrQueue(fn: () => void, reject: Reject) {
 		const item = dbsMap.get(this.#db_name);
-		if (
-			(item && item.status !== 'connected') ||
-			this.#hasObjectStore === false ||
-			this.#isBumpingVersion === true
-		) {
+		if ((item && item.status !== 'connected') || this.#hasObjectStore === false) {
 			this.#db_Q.add(fn);
 		} else if (!item?.db) {
 			return this.#handleNoDB(fn, 1, reject);
@@ -493,12 +484,14 @@ export class IDB {
 	 */
 	dropDB(): Promise<true> {
 		return new Promise((resolve, reject) => {
-			if (this.#isBumpingVersion === true) {
+			const item = dbsMap.get(this.#db_name)!;
+
+			if (item.status === 'upgrading') {
 				reject(new Event('Cannot drop DB while bumping version'));
 				return;
 			}
 
-			const idb = dbsMap.get(this.#db_name)?.db;
+			const idb = item?.db;
 			console.log('drop', this.#db_name, this.#storeName);
 			idb?.close();
 
