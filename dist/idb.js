@@ -1,15 +1,24 @@
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
 };
 var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
     if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
-var _IDB_instances, _IDB_db_name, _IDB_storeName, _IDB_index_db, _IDB_idb_request, _IDB_isBumpingVersion, _IDB_isReconnecting, _IDB_db_prep_Q, _IDB_hasObjectStore, _IDB_updateDBinMap, _IDB_completeObjectStoreSetup, _IDB_setupRequests, _IDB_handleCloseError, _IDB_handleRetry, _IDB_process_get, _IDB_process_get_all, _IDB_process_get_keys, _IDB_process_set, _IDB_process_set_multiple, _IDB_process_delete, _IDB_process_db_clear, _IDB_objectStoreExists, _IDB_bumpVersion, _IDB_runOrQueue;
+var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var _IDB_instances, _IDB_db_name, _IDB_storeName, _IDB_hasObjectStore, _IDB_db_Q, _IDB_runStores_Q, _IDB_update_db_status, _IDB_update_db, _IDB_updateDBinMap, _IDB_markObjectStoreConnected, _IDB_setupRequests, _IDB_bumpVersion, _IDB_objectStoreExists, _IDB_checkDBexists, _IDB_handleRetry, _IDB_handleNoDB, _IDB_process_get, _IDB_process_get_all, _IDB_process_get_keys, _IDB_process_set, _IDB_process_set_multiple, _IDB_process_delete, _IDB_process_db_clear, _IDB_init, _IDB_pre_init, _IDB_runOrQueue;
 const dbsMap = new Map();
 /**
  * A class for interacting with IndexedDB through a simple key-value interface
@@ -35,32 +44,14 @@ export class IDB {
      * @param storeName - The name of the object store to use within the database
      */
     constructor(db_name, storeName) {
-        var _a, _b;
         _IDB_instances.add(this);
         _IDB_db_name.set(this, void 0);
         _IDB_storeName.set(this, void 0);
-        _IDB_index_db.set(this, null);
-        _IDB_idb_request.set(this, null);
-        _IDB_isBumpingVersion.set(this, false);
-        _IDB_isReconnecting.set(this, false); //  prevent duplicate reconnections
-        _IDB_db_prep_Q.set(this, new Set());
         _IDB_hasObjectStore.set(this, false);
+        _IDB_db_Q.set(this, new Set());
         __classPrivateFieldSet(this, _IDB_db_name, db_name, "f");
         __classPrivateFieldSet(this, _IDB_storeName, storeName, "f");
-        __classPrivateFieldSet(this, _IDB_index_db, (_a = dbsMap.get(db_name)) === null || _a === void 0 ? void 0 : _a.idb, "f");
-        __classPrivateFieldSet(this, _IDB_idb_request, (_b = dbsMap.get(db_name)) === null || _b === void 0 ? void 0 : _b.req, "f");
-        if (!__classPrivateFieldGet(this, _IDB_idb_request, "f")) {
-            __classPrivateFieldSet(this, _IDB_idb_request, indexedDB.open(db_name), "f");
-            dbsMap.set(db_name, {
-                idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-                req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-                upgrade_Q: {}
-            });
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
-        }
-        else {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this);
-        }
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_pre_init).call(this);
     }
     /**
      * Retrieves a value from the database by its key
@@ -70,7 +61,7 @@ export class IDB {
      */
     get(key) {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get).call(this, resolve, reject, key));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get).call(this, resolve, reject, key), reject);
         });
     }
     /**
@@ -78,9 +69,10 @@ export class IDB {
      * @template T - The type of array to be returned, must extend Array
      * @returns A promise that resolves to an array of all values in the database
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getValues() {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_all).call(this, resolve, reject));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_all).call(this, resolve, reject), reject);
         });
     }
     /**
@@ -89,7 +81,7 @@ export class IDB {
      */
     getKeys() {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_keys).call(this, resolve, reject));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_keys).call(this, resolve, reject), reject);
         });
     }
     /**
@@ -100,7 +92,7 @@ export class IDB {
      */
     set(key, value) {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set).call(this, resolve, reject, key, value));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set).call(this, resolve, reject, key, value), reject);
         });
     }
     /**
@@ -111,7 +103,7 @@ export class IDB {
      */
     setMultiple(items) {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set_multiple).call(this, resolve, reject, items));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set_multiple).call(this, resolve, reject, items), reject);
         });
     }
     /**
@@ -121,7 +113,7 @@ export class IDB {
      */
     del(key) {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_delete).call(this, resolve, reject, key));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_delete).call(this, resolve, reject, key), reject);
         });
     }
     /**
@@ -130,7 +122,7 @@ export class IDB {
      */
     clearStore() {
         return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_db_clear).call(this, resolve, reject));
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runOrQueue).call(this, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_db_clear).call(this, resolve, reject), reject);
         });
     }
     /**
@@ -140,174 +132,215 @@ export class IDB {
      */
     dropDB() {
         return new Promise((resolve, reject) => {
-            var _a;
-            if (__classPrivateFieldGet(this, _IDB_isBumpingVersion, "f") === true) {
+            const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+            if (item.status === 'upgrading') {
                 reject(new Event('Cannot drop DB while bumping version'));
                 return;
             }
-            (_a = __classPrivateFieldGet(this, _IDB_index_db, "f")) === null || _a === void 0 ? void 0 : _a.close();
+            const idb = item === null || item === void 0 ? void 0 : item.db;
+            console.log('drop', __classPrivateFieldGet(this, _IDB_db_name, "f"), __classPrivateFieldGet(this, _IDB_storeName, "f"));
+            idb === null || idb === void 0 ? void 0 : idb.close();
             const deleteRequest = indexedDB.deleteDatabase(__classPrivateFieldGet(this, _IDB_db_name, "f"));
             deleteRequest.onsuccess = () => {
-                __classPrivateFieldSet(this, _IDB_index_db, null, "f");
-                __classPrivateFieldSet(this, _IDB_idb_request, null, "f");
-                dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
-                    idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-                    req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-                    upgrade_Q: {}
-                });
+                const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+                if (!item) {
+                    return;
+                }
                 resolve(true);
+                if ((idb === null || idb === void 0 ? void 0 : idb.objectStoreNames.length) === 0) {
+                    dbsMap.delete(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+                }
             };
             deleteRequest.onerror = (e) => reject(e);
         });
     }
 }
-_IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = new WeakMap(), _IDB_idb_request = new WeakMap(), _IDB_isBumpingVersion = new WeakMap(), _IDB_isReconnecting = new WeakMap(), _IDB_db_prep_Q = new WeakMap(), _IDB_hasObjectStore = new WeakMap(), _IDB_instances = new WeakSet(), _IDB_updateDBinMap = function _IDB_updateDBinMap(evnt) {
-    __classPrivateFieldSet(this, _IDB_index_db, evnt.target.result, "f");
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
-    if (__classPrivateFieldGet(this, _IDB_index_db, "f").version === 0) {
-        __classPrivateFieldSet(this, _IDB_isBumpingVersion, true, "f");
-    }
+_IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_hasObjectStore = new WeakMap(), _IDB_db_Q = new WeakMap(), _IDB_instances = new WeakSet(), _IDB_runStores_Q = function _IDB_runStores_Q() {
     const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
-    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
-        idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-        req: item.req,
-        upgrade_Q: item.upgrade_Q
-    });
-}, _IDB_completeObjectStoreSetup = function _IDB_completeObjectStoreSetup() {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
+    for (const fn of item.stores_Q) {
+        const v = fn();
+        if (v === false) {
+            break;
+        }
+        else {
+            item.stores_Q.delete(fn);
+        }
+    }
+}, _IDB_update_db_status = function _IDB_update_db_status(s) {
+    const i = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+    i.status = s;
+    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), i);
+}, _IDB_update_db = function _IDB_update_db(idb) {
+    const i = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+    i.db = idb;
+    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), i);
+}, _IDB_updateDBinMap = function _IDB_updateDBinMap(evnt) {
+    const idb = evnt.target.result;
+    if (!idb) {
         return;
     }
-    __classPrivateFieldSet(this, _IDB_isReconnecting, false, "f"); // reset reconnect flag on success
+    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db).call(this, idb);
+}, _IDB_markObjectStoreConnected = function _IDB_markObjectStoreConnected() {
     __classPrivateFieldSet(this, _IDB_hasObjectStore, true, "f");
-    __classPrivateFieldSet(this, _IDB_isBumpingVersion, false, "f");
-    __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").forEach((fn) => fn());
-    __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").clear();
-}, _IDB_setupRequests = function _IDB_setupRequests() {
-    if (!__classPrivateFieldGet(this, _IDB_idb_request, "f"))
-        return;
-    if (__classPrivateFieldGet(this, _IDB_idb_request, "f").readyState === 'done') {
-        __classPrivateFieldSet(this, _IDB_index_db, __classPrivateFieldGet(this, _IDB_idb_request, "f").result, "f");
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_completeObjectStoreSetup).call(this);
-        const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
-        dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
-            idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-            req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-            upgrade_Q: item.upgrade_Q
-        });
+    for (const fn of __classPrivateFieldGet(this, _IDB_db_Q, "f")) {
+        __classPrivateFieldGet(this, _IDB_db_Q, "f").delete(fn);
+        fn();
+    }
+    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db_status).call(this, 'connected');
+    return true;
+}, _IDB_setupRequests = function _IDB_setupRequests(req) {
+    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db_status).call(this, 'connecting');
+    if (req.readyState === 'done') {
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db).call(this, req.result);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_markObjectStoreConnected).call(this);
         return;
     }
-    __classPrivateFieldGet(this, _IDB_idb_request, "f").onupgradeneeded = (event) => {
-        var _a;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_updateDBinMap).call(this, event);
-        if (__classPrivateFieldGet(this, _IDB_index_db, "f") && __classPrivateFieldGet(this, _IDB_index_db, "f").objectStoreNames.length === 0) {
-            if (!__classPrivateFieldGet(this, _IDB_index_db, "f").objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f"))) {
-                __classPrivateFieldGet(this, _IDB_index_db, "f").createObjectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"));
-                delete dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f")).upgrade_Q[__classPrivateFieldGet(this, _IDB_storeName, "f")];
-            }
-            __classPrivateFieldSet(this, _IDB_isBumpingVersion, false, "f");
+    req.onupgradeneeded = (event) => {
+        const idb = event.target.result;
+        if (!idb)
+            return;
+        if (idb.objectStoreNames.length === 0 || idb.objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f")) === false) {
+            idb.createObjectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"));
             return;
         }
-        const q = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.upgrade_Q;
-        if (q && __classPrivateFieldGet(this, _IDB_storeName, "f") in q) {
-            q[__classPrivateFieldGet(this, _IDB_storeName, "f")]();
-            delete q[__classPrivateFieldGet(this, _IDB_storeName, "f")];
-        }
-        __classPrivateFieldSet(this, _IDB_isBumpingVersion, false, "f");
     };
-    __classPrivateFieldGet(this, _IDB_idb_request, "f").onsuccess = (event) => {
+    req.onsuccess = (event) => {
         __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_updateDBinMap).call(this, event);
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_completeObjectStoreSetup).call(this);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_markObjectStoreConnected).call(this);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_runStores_Q).call(this);
     };
-    __classPrivateFieldGet(this, _IDB_idb_request, "f").onerror = (event) => {
+    req.onerror = (event) => {
         __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_updateDBinMap).call(this, event);
         __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this);
     };
-}, _IDB_handleCloseError = function _IDB_handleCloseError() {
-    // safety measure: only one reconnection at a time.
-    if (__classPrivateFieldGet(this, _IDB_isReconnecting, "f"))
-        return;
-    __classPrivateFieldSet(this, _IDB_isReconnecting, true, "f");
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
-    __classPrivateFieldSet(this, _IDB_idb_request, indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"), __classPrivateFieldGet(this, _IDB_index_db, "f").version + 1), "f");
+}, _IDB_bumpVersion = function _IDB_bumpVersion() {
     const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
-    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
-        idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-        req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-        upgrade_Q: item.upgrade_Q
-    });
-    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
-}, _IDB_handleRetry = function _IDB_handleRetry(err, cb, retryCount) {
-    if (retryCount < 3 && err instanceof DOMException) {
-        if (err.message.includes('The database connection is closing')) {
-            __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(cb);
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleCloseError).call(this);
+    const idb = item === null || item === void 0 ? void 0 : item.db;
+    if (!idb) {
+        return;
+    }
+    item.status = 'upgrading';
+    idb.close();
+    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), item);
+    const req = indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"), idb.version + 1);
+    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this, req);
+}, _IDB_objectStoreExists = function _IDB_objectStoreExists() {
+    const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+    const idb = item === null || item === void 0 ? void 0 : item.db;
+    if (!idb) {
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_pre_init).call(this);
+        return false;
+    }
+    if (idb.objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f")) === false) {
+        item.stores_Q.add(() => {
+            const dbItem = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+            const idb = dbItem === null || dbItem === void 0 ? void 0 : dbItem.db;
+            if (!idb) {
+                return false;
+            }
+            if (idb.objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f")) === false) {
+                idb.createObjectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"));
+                dbItem.db = idb;
+                dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), dbItem);
+                __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_markObjectStoreConnected).call(this);
+            }
+            return true;
+        });
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_bumpVersion).call(this);
+        return false;
+    }
+    else {
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_markObjectStoreConnected).call(this);
+        return true;
+    }
+}, _IDB_checkDBexists = function _IDB_checkDBexists() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const dbs = yield indexedDB.databases();
+        const has_db = dbs.find((db) => db.name === __classPrivateFieldGet(this, _IDB_db_name, "f"));
+        if (!has_db) {
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db_status).call(this, 'init');
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_init).call(this);
         }
-        else if (err.message.includes('One of the specified object stores was not found')) {
-            __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(cb);
+        else {
             __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this);
         }
+    });
+}, _IDB_handleRetry = function _IDB_handleRetry(err, cb, retryCount, reject) {
+    if (retryCount < 5 && err instanceof DOMException) {
+        if (err.message.includes('database connection is closing') ||
+            err.message.includes('the specified object stores was not found')) {
+            __classPrivateFieldGet(this, _IDB_db_Q, "f").add(cb);
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_update_db_status).call(this, 'upgrading');
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_checkDBexists).call(this);
+        }
+        else {
+            reject(err);
+        }
+    }
+    else {
+        reject(err);
+    }
+}, _IDB_handleNoDB = function _IDB_handleNoDB(cb, retryCount, reject) {
+    if (retryCount < 5) {
+        __classPrivateFieldGet(this, _IDB_db_Q, "f").add(cb);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_checkDBexists).call(this);
+    }
+    else {
+        reject(new Event('Database not found'));
     }
 }, _IDB_process_get = function _IDB_process_get(resolve, reject, key, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).get(key);
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).get(key);
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get).call(this, resolve, reject, key, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get).call(this, resolve, reject, key, retryCount), retryCount, reject);
     }
 }, _IDB_process_get_all = function _IDB_process_get_all(resolve, reject, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).getAll();
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).getAll();
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_all).call(this, resolve, reject, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_all).call(this, resolve, reject, retryCount), retryCount, reject);
     }
 }, _IDB_process_get_keys = function _IDB_process_get_keys(resolve, reject, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly')
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .getAllKeys();
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readonly').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).getAllKeys();
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_keys).call(this, resolve, reject, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_get_keys).call(this, resolve, reject, retryCount), retryCount, reject);
     }
 }, _IDB_process_set = function _IDB_process_set(resolve, reject, key, value, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite')
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .put(value, key);
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).put(value, key);
         req.onsuccess = () => resolve(true);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set).call(this, resolve, reject, key, value, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set).call(this, resolve, reject, key, value, retryCount), retryCount, reject);
     }
 }, _IDB_process_set_multiple = function _IDB_process_set_multiple(resolve, reject, items, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f"))
-        return;
+    var _a;
     try {
-        const tx = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite');
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const tx = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite');
         if (items.length > 0) {
             for (const item of items) {
                 tx.objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).put(item.value, item.key);
@@ -318,80 +351,86 @@ _IDB_db_name = new WeakMap(), _IDB_storeName = new WeakMap(), _IDB_index_db = ne
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set_multiple).call(this, resolve, reject, items, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_set_multiple).call(this, resolve, reject, items, retryCount), retryCount, reject);
     }
 }, _IDB_process_delete = function _IDB_process_delete(resolve, reject, key, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
-        return;
-    }
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f")
-            .transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite')
-            .objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"))
-            .delete(key);
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).delete(key);
         req.onsuccess = () => resolve(true);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_delete).call(this, resolve, reject, key, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_delete).call(this, resolve, reject, key, retryCount), retryCount, reject);
     }
 }, _IDB_process_db_clear = function _IDB_process_db_clear(resolve, reject, retryCount = -1) {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
-        return;
-    }
+    var _a;
     try {
-        const req = __classPrivateFieldGet(this, _IDB_index_db, "f").transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).clear();
+        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.db;
+        const req = idb.transaction([__classPrivateFieldGet(this, _IDB_storeName, "f")], 'readwrite').objectStore(__classPrivateFieldGet(this, _IDB_storeName, "f")).clear();
         req.onsuccess = () => resolve(true);
         req.onerror = (e) => reject(e);
     }
     catch (err) {
         retryCount = retryCount + 1;
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_db_clear).call(this, resolve, reject, retryCount), retryCount);
+        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleRetry).call(this, err, () => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_process_db_clear).call(this, resolve, reject, retryCount), retryCount, reject);
     }
-}, _IDB_objectStoreExists = function _IDB_objectStoreExists() {
-    var _a;
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
-        const idb = (_a = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"))) === null || _a === void 0 ? void 0 : _a.idb;
-        if (!idb) {
-            return;
+}, _IDB_init = function _IDB_init() {
+    return __awaiter(this, void 0, void 0, function* () {
+        let req;
+        let has_db;
+        const dbs = yield indexedDB.databases();
+        if (dbs.length === 0) {
+            req = indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"), 1);
         }
-        __classPrivateFieldSet(this, _IDB_index_db, idb, "f");
-    }
-    if (__classPrivateFieldGet(this, _IDB_index_db, "f").objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f")) === false) {
-        const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
-        if (item.upgrade_Q) {
-            item.upgrade_Q[__classPrivateFieldGet(this, _IDB_storeName, "f")] = () => {
-                if (__classPrivateFieldGet(this, _IDB_index_db, "f").objectStoreNames.contains(__classPrivateFieldGet(this, _IDB_storeName, "f")) === false) {
-                    __classPrivateFieldGet(this, _IDB_index_db, "f").createObjectStore(__classPrivateFieldGet(this, _IDB_storeName, "f"));
+        else {
+            const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+            if (item.status !== 'init') {
+                if (item.status === 'connected') {
+                    return __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this);
                 }
-            };
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_bumpVersion).call(this);
+                item.stores_Q.add(() => __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_objectStoreExists).call(this));
+                return;
+            }
+            else {
+                has_db = dbs.find((db) => db.name === __classPrivateFieldGet(this, _IDB_db_name, "f"));
+                if (has_db) {
+                    has_db = undefined;
+                    req = indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+                }
+                else {
+                    req = indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"), 1);
+                }
+            }
         }
-    }
-    else {
-        __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_completeObjectStoreSetup).call(this);
-    }
-}, _IDB_bumpVersion = function _IDB_bumpVersion() {
-    if (!__classPrivateFieldGet(this, _IDB_index_db, "f")) {
-        return;
-    }
-    __classPrivateFieldSet(this, _IDB_isBumpingVersion, true, "f");
-    __classPrivateFieldGet(this, _IDB_index_db, "f").close();
-    __classPrivateFieldSet(this, _IDB_idb_request, indexedDB.open(__classPrivateFieldGet(this, _IDB_db_name, "f"), __classPrivateFieldGet(this, _IDB_index_db, "f").version + 1), "f");
-    const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
-    dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
-        idb: __classPrivateFieldGet(this, _IDB_index_db, "f"),
-        req: __classPrivateFieldGet(this, _IDB_idb_request, "f"),
-        upgrade_Q: item.upgrade_Q
+        if (!has_db) {
+            const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+            item.req = req;
+            dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), item);
+            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this, req);
+        }
     });
-    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
-}, _IDB_runOrQueue = function _IDB_runOrQueue(fn) {
-    if (__classPrivateFieldGet(this, _IDB_hasObjectStore, "f") === false || __classPrivateFieldGet(this, _IDB_isBumpingVersion, "f") === true) {
-        __classPrivateFieldGet(this, _IDB_db_prep_Q, "f").add(fn);
-        if (__classPrivateFieldGet(this, _IDB_hasObjectStore, "f") === false && __classPrivateFieldGet(this, _IDB_isBumpingVersion, "f") === false) {
-            __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_setupRequests).call(this);
-        }
+}, _IDB_pre_init = function _IDB_pre_init() {
+    const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+    if (!item) {
+        dbsMap.set(__classPrivateFieldGet(this, _IDB_db_name, "f"), {
+            db: undefined,
+            // @ts-expect-error this is fine for now
+            req: undefined,
+            stores_Q: new Set(),
+            status: 'init'
+        });
+    }
+    __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_init).call(this);
+}, _IDB_runOrQueue = function _IDB_runOrQueue(fn, reject) {
+    const item = dbsMap.get(__classPrivateFieldGet(this, _IDB_db_name, "f"));
+    if ((item && item.status !== 'connected') || __classPrivateFieldGet(this, _IDB_hasObjectStore, "f") === false) {
+        __classPrivateFieldGet(this, _IDB_db_Q, "f").add(fn);
+    }
+    else if (!(item === null || item === void 0 ? void 0 : item.db)) {
+        return __classPrivateFieldGet(this, _IDB_instances, "m", _IDB_handleNoDB).call(this, fn, 1, reject);
     }
     else {
         fn();
