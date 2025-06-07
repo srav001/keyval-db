@@ -37,6 +37,7 @@ bun add keyval-db
 ## API Reference
 
 - [IDB Class](#idb-class)
+- [getDB](#getdb)
 - [get](#get)
 - [getValues](#getvalues)
 - [getKeys](#getkeys)
@@ -51,10 +52,10 @@ bun add keyval-db
 The main class for interacting with IndexedDB through a key-value interface.
 
 ```typescript
-import { IDB } from "keyval-db";
+import { IDB } from 'keyval-db';
 
 // Create a new database connection
-const db = new IDB("myDatabase", "myStore");
+const db = new IDB('myDatabase', 'myStore');
 ```
 
 #### Constructor Parameters
@@ -64,32 +65,97 @@ const db = new IDB("myDatabase", "myStore");
 | db_name   | string | The name of the IndexedDB database to connect to        |
 | storeName | string | The name of the object store to use within the database |
 
+### getDB
+
+A factory function that creates and caches IDB instances cleaning up the cache when the database is dropped.
+
+#### Benefits
+
+- **Instance Caching**: Prevents duplicate database connections
+- **Memory Efficient**: Reuses existing instances instead of creating new ones
+- **Simplified API**: No need to manually manage database instances
+- **Automatic Cleanup**: Instances are automatically removed from cache when database is dropped
+
+```typescript
+import { getDB } from 'keyval-db';
+
+// Create or get a cached database connection
+const db = getDB('myDatabase', 'myStore');
+
+// Multiple calls with the same parameters return the same instance
+const sameDb = getDB('myDatabase', 'myStore');
+console.log(db === sameDb); // true
+
+// Different database or table names create separate instances
+const otherDb = getDB('otherDatabase', 'myStore');
+const differentStore = getDB('myDatabase', 'otherStore');
+```
+
+#### Parameters
+
+| Parameter | Type   | Description                                             |
+| --------- | ------ | ------------------------------------------------------- |
+| db_name   | string | The name of the IndexedDB database to connect to        |
+| tableName | string | The name of the object store to use within the database |
+
+#### Returns
+
+`IDB` - A cached IDB instance with all the same methods available
+
+#### Usage Examples
+
+```typescript
+// Basic usage with automatic caching
+const userDB = getDB('myApp', 'users');
+const settingsDB = getDB('myApp', 'settings');
+
+// Store and retrieve data
+await userDB.set('user-123', { name: 'John', email: 'john@example.com' });
+const user = await userDB.get('user-123');
+
+// The same instance is returned for subsequent calls
+const sameUserDB = getDB('myApp', 'users');
+await sameUserDB.set('user-456', { name: 'Jane', email: 'jane@example.com' });
+
+// All IDB methods are available
+const allUsers = await userDB.getValues();
+const userKeys = await userDB.getKeys();
+await userDB.setMultiple([
+	{ key: 'user-789', value: { name: 'Bob', email: 'bob@example.com' } },
+	{ key: 'user-101', value: { name: 'Alice', email: 'alice@example.com' } }
+]);
+await userDB.clearStore();
+
+// Drop database (removes from cache automatically)
+await userDB.dropDB(); // This removes the instance from cache
+```
+
 ### get
 
 Retrieves a value from the database by its key.
 
 ```typescript
 // With TypeScript generics for type safety
-const user = await db.get<{ name: string; age: number }>("user-123");
+const user = await db.get<{ name: string; age: number }>('user-123');
 console.log(user.name); // Type-safe access
 
 // Using Promise chain
-db.get<string>("settings-theme")
-  .then((theme) => {
-    console.log(`Current theme: ${theme}`);
-  })
-  .catch((err) => {
-    console.error("Failed to get theme:", err);
-  });
+db.get<string>('settings-theme')
+	.then((theme) => {
+		console.log(`Current theme: ${theme}`);
+	})
+	.catch((err) => {
+		console.error('Failed to get theme:', err);
+	});
 
 // Try-catch with await
 try {
-  const count = await db.get<number>("visit-count");
-  console.log(`Visit count: ${count}`);
+	const count = await db.get<number>('visit-count');
+	console.log(`Visit count: ${count}`);
 } catch (err) {
-  console.error("Failed to get visit count:", err);
+	console.error('Failed to get visit count:', err);
 } finally {
-  console.log("Get operation completed");
+	console.log('Get operation completed');
 }
 ```
 
@@ -111,17 +177,17 @@ Retrieves all values stored in the database.
 // Get all items as an array with type safety
 const allItems = await db.getValues<Array<{ id: string; content: string }>>();
 for (const item of allItems) {
-  console.log(item.id, item.content);
+	console.log(item.id, item.content);
 }
 
 // Using Promise chain
 db.getValues<string[]>()
-  .then((values) => {
-    console.log(`Found ${values.length} values`);
-  })
-  .catch((err) => {
-    console.error("Failed to get values:", err);
-  });
+	.then((values) => {
+		console.log(`Found ${values.length} values`);
+	})
+	.catch((err) => {
+		console.error('Failed to get values:', err);
+	});
 ```
 
 #### Returns
@@ -139,12 +205,12 @@ console.log(`Found ${allKeys.length} keys in the store`);
 
 // Using Promise chain
 db.getKeys()
-  .then((keys) => {
-    keys.forEach((key) => console.log(`Key: ${key}`));
-  })
-  .catch((err) => {
-    console.error("Failed to get keys:", err);
-  });
+	.then((keys) => {
+		keys.forEach((key) => console.log(`Key: ${key}`));
+	})
+	.catch((err) => {
+		console.error('Failed to get keys:', err);
+	});
 ```
 
 #### Returns
@@ -157,33 +223,33 @@ Stores a value in the database with the specified key.
 
 ```typescript
 // Simple value
-await db.set("settings-theme", "dark");
+await db.set('settings-theme', 'dark');
 
 // Complex object
-await db.set("user-profile", {
-  name: "John Doe",
-  email: "john@example.com",
-  preferences: {
-    notifications: true,
-  },
+await db.set('user-profile', {
+	name: 'John Doe',
+	email: 'john@example.com',
+	preferences: {
+		notifications: true
+	}
 });
 
 // Using Promise chain with type checking
-db.set("counter", 5)
-  .then((result) => {
-    // result is typed as true
-    console.log("Value saved:", result);
-  })
-  .catch((err) => {
-    console.error("Failed to save:", err);
-  });
+db.set('counter', 5)
+	.then((result) => {
+		// result is typed as true
+		console.log('Value saved:', result);
+	})
+	.catch((err) => {
+		console.error('Failed to save:', err);
+	});
 
 // Try-catch with await
 try {
-  const result = await db.set("last-login", new Date().toISOString());
-  console.log("Login time saved:", result); // result is true
+	const result = await db.set('last-login', new Date().toISOString());
+	console.log('Login time saved:', result); // result is true
 } catch (err) {
-  console.error("Failed to save login time:", err);
+	console.error('Failed to save login time:', err);
 }
 ```
 
@@ -205,31 +271,31 @@ Stores multiple key-value pairs in the database in a single transaction.
 ```typescript
 // Store multiple items in one transaction
 await db.setMultiple([
-  { key: "item-1", value: { name: "Item 1", price: 10 } },
-  { key: "item-2", value: { name: "Item 2", price: 20 } },
-  { key: "item-3", value: { name: "Item 3", price: 30 } },
+	{ key: 'item-1', value: { name: 'Item 1', price: 10 } },
+	{ key: 'item-2', value: { name: 'Item 2', price: 20 } },
+	{ key: 'item-3', value: { name: 'Item 3', price: 30 } }
 ]);
 
 // With type safety
 type Product = { name: string; price: number };
 const products: Array<{ key: string; value: Product }> = [
-  { key: "product-1", value: { name: "Product 1", price: 9.99 } },
-  { key: "product-2", value: { name: "Product 2", price: 19.99 } },
+	{ key: 'product-1', value: { name: 'Product 1', price: 9.99 } },
+	{ key: 'product-2', value: { name: 'Product 2', price: 19.99 } }
 ];
 const result = await db.setMultiple<Product>(products);
-console.log("Products saved:", result); // result is true
+console.log('Products saved:', result); // result is true
 
 // Using Promise chain
 db.setMultiple([
-  { key: "setting-1", value: "value-1" },
-  { key: "setting-2", value: "value-2" },
+	{ key: 'setting-1', value: 'value-1' },
+	{ key: 'setting-2', value: 'value-2' }
 ])
-  .then((result) => {
-    console.log("All settings saved:", result);
-  })
-  .catch((err) => {
-    console.error("Failed to save settings:", err);
-  });
+	.then((result) => {
+		console.log('All settings saved:', result);
+	})
+	.catch((err) => {
+		console.error('Failed to save settings:', err);
+	});
 ```
 
 #### Parameters
@@ -248,23 +314,23 @@ Deletes a value from the database by its key.
 
 ```typescript
 // Delete an item
-await db.del("temporary-data");
+await db.del('temporary-data');
 
 // Using Promise chain to check result
-db.del("session-token")
-  .then((result) => {
-    console.log("Token deleted:", result); // result is true
-  })
-  .catch((err) => {
-    console.error("Failed to delete token:", err);
-  });
+db.del('session-token')
+	.then((result) => {
+		console.log('Token deleted:', result); // result is true
+	})
+	.catch((err) => {
+		console.error('Failed to delete token:', err);
+	});
 
 // Try-catch with await
 try {
-  const result = await db.del("cache-item-123");
-  console.log("Cache item deleted:", result); // result is true
+	const result = await db.del('cache-item-123');
+	console.log('Cache item deleted:', result); // result is true
 } catch (err) {
-  console.error("Failed to delete cache item:", err);
+	console.error('Failed to delete cache item:', err);
 }
 ```
 
@@ -288,19 +354,19 @@ await db.clearStore();
 
 // Using Promise chain
 db.clearStore()
-  .then((result) => {
-    console.log("Store cleared:", result); // result is true
-  })
-  .catch((err) => {
-    console.error("Failed to clear store:", err);
-  });
+	.then((result) => {
+		console.log('Store cleared:', result); // result is true
+	})
+	.catch((err) => {
+		console.error('Failed to clear store:', err);
+	});
 
 // Try-catch with await
 try {
-  const result = await db.clearStore();
-  console.log("All data cleared:", result); // result is true
+	const result = await db.clearStore();
+	console.log('All data cleared:', result); // result is true
 } catch (err) {
-  console.error("Failed to clear data:", err);
+	console.error('Failed to clear data:', err);
 }
 ```
 
@@ -318,19 +384,19 @@ await db.dropDB();
 
 // Using Promise chain
 db.dropDB()
-  .then((result) => {
-    console.log("Database deleted:", result); // result is true
-  })
-  .catch((err) => {
-    console.error("Failed to delete database:", err);
-  });
+	.then((result) => {
+		console.log('Database deleted:', result); // result is true
+	})
+	.catch((err) => {
+		console.error('Failed to delete database:', err);
+	});
 
 // Try-catch with await
 try {
-  const result = await db.dropDB();
-  console.log("Database deleted successfully:", result); // result is true
+	const result = await db.dropDB();
+	console.log('Database deleted successfully:', result); // result is true
 } catch (err) {
-  console.error("Failed to delete database:", err);
+	console.error('Failed to delete database:', err);
 }
 ```
 
@@ -341,60 +407,60 @@ try {
 ## Complete Example
 
 ```typescript
-import { IDB } from "keyval-db";
+import { IDB } from 'keyval-db';
 
 // Define your data types
 interface User {
-  id: string;
-  name: string;
-  email: string;
-  createdAt: string;
+	id: string;
+	name: string;
+	email: string;
+	createdAt: string;
 }
 
 // Create a database connection
-const userDB = new IDB("myApp", "users");
+const userDB = new IDB('myApp', 'users');
 
 // Store a user
 async function saveUser(user: User) {
-  try {
-    await userDB.set(user.id, user);
-    console.log(`User ${user.name} saved successfully!`);
-  } catch (error) {
-    console.error("Failed to save user:", error);
-  }
+	try {
+		await userDB.set(user.id, user);
+		console.log(`User ${user.name} saved successfully!`);
+	} catch (error) {
+		console.error('Failed to save user:', error);
+	}
 }
 
 // Retrieve a user
 async function getUser(userId: string) {
-  try {
-    const user = await userDB.get<User>(userId);
-    console.log(`Found user: ${user.name}`);
-    return user;
-  } catch (error) {
-    console.error(`Failed to get user ${userId}:`, error);
-    return null;
-  }
+	try {
+		const user = await userDB.get<User>(userId);
+		console.log(`Found user: ${user.name}`);
+		return user;
+	} catch (error) {
+		console.error(`Failed to get user ${userId}:`, error);
+		return null;
+	}
 }
 
 // Delete a user
 async function deleteUser(userId: string) {
-  try {
-    await userDB.del(userId);
-    console.log(`User ${userId} deleted successfully!`);
-  } catch (error) {
-    console.error(`Failed to delete user ${userId}:`, error);
-  }
+	try {
+		await userDB.del(userId);
+		console.log(`User ${userId} deleted successfully!`);
+	} catch (error) {
+		console.error(`Failed to delete user ${userId}:`, error);
+	}
 }
 
 // Get all users
 async function getAllUsers() {
-  try {
-    const users = await userDB.getValues<User[]>();
-    console.log(`Found ${users.length} users`);
-    return users;
-  } catch (error) {
-    console.error("Failed to get users:", error);
-    return [];
-  }
+	try {
+		const users = await userDB.getValues<User[]>();
+		console.log(`Found ${users.length} users`);
+		return users;
+	} catch (error) {
+		console.error('Failed to get users:', error);
+		return [];
+	}
 }
 ```
