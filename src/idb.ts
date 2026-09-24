@@ -48,7 +48,7 @@ async function connect(name: string, store: string): Promise<IDBDatabase> {
 	// rest wait for the replacement and upgrade again only if their own store is still missing.
 	if (connections.get(name) === connection) {
 		db.close();
-		open(name, store, db.version + 1);
+		void open(name, store, db.version + 1);
 	}
 	return connect(name, store);
 }

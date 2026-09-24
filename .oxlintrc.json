@@ -1,0 +1,15 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["eslint", "typescript", "oxc"],
+	"categories": {
+		"correctness": "error"
+	},
+	"options": {
+		"typeAware": true,
+		"typeCheck": true
+	},
+	"ignorePatterns": ["dist"],
+	"rules": {
+		"typescript/no-explicit-any": "error"
+	}
+}

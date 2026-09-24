@@ -16,8 +16,10 @@
 	},
 	"sideEffects": false,
 	"scripts": {
-		"build": "npx tsc --build",
-		"pub": "pnpm build && npm publish --access public"
+		"build": "tsc --build",
+		"check": "oxfmt --check && oxlint",
+		"fix": "oxfmt && oxlint --fix",
+		"pub": "pnpm check && pnpm build && npm publish --access public"
 	},
 	"repository": {
 		"type": "git",
@@ -37,8 +39,9 @@
 	},
 	"homepage": "https://github.com/srav001/keyval-db#readme",
 	"devDependencies": {
-		"prettier": "^3.5.3",
-		"prettier-plugin-organize-imports": "^4.1.0",
-		"typescript": "^5.8.2"
+		"oxfmt": "0.70.0",
+		"oxlint": "1.85.0",
+		"oxlint-tsgolint": "7.0.2002",
+		"typescript": "7.0.2"
 	}
 }
