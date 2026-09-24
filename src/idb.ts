@@ -75,12 +75,7 @@ export function transact<T>(
 	};
 	try {
 		const tx = db.transaction(store, mode);
-		const req = operation(tx.objectStore(store));
-		// Reads resolve as soon as the value arrives; writes wait for the commit so success means durable.
-		if (mode === 'readonly' && req) req.onsuccess = () => onSuccess(req.result);
-		else tx.oncomplete = () => onSuccess(req?.result as T);
-		tx.onabort = () => fail(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
-		return () => {
+		const cancel = () => {
 			// A cancelled operation is not a broken connection, so it must not release it.
 			tx.onabort = null;
 			try {
@@ -89,6 +84,18 @@ export function transact<T>(
 				// Already committed or aborted; nothing is left to cancel.
 			}
 		};
+		try {
+			const req = operation(tx.objectStore(store));
+			// Reads resolve as soon as the value arrives; writes wait for the commit so success means durable.
+			if (mode === 'readonly' && req) req.onsuccess = () => onSuccess(req.result);
+			else tx.oncomplete = () => onSuccess(req?.result as T);
+			tx.onabort = () => fail(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
+		} catch (error) {
+			// The operation may have queued writes before throwing; aborting keeps a batch all-or-nothing.
+			cancel();
+			throw error;
+		}
+		return cancel;
 	} catch (error) {
 		fail(error);
 		return () => undefined;
