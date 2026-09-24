@@ -1,29 +1,18 @@
-import { IDB } from './idb';
-export type { MultiSetItem } from './idb';
+import { IDB } from './idb.js';
+export type { MultiSetItem } from './idb.js';
 
-const dbMap = new Map<string, IDB>();
+const dbs = new Map<string, IDB>();
+
+/**
+ * Returns a cached IDB instance for the database and store, creating it on first use.
+ * @param db_name - The name of the IndexedDB database to connect to
+ * @param tableName - The name of the object store to use within the database
+ */
 function getDB(db_name: string, tableName: string): IDB {
 	const key = `${db_name}:${tableName}`;
-
-	if (!dbMap.has(key)) {
-		const idb = new IDB(db_name, tableName);
-		const v = {
-			get: idb.get.bind(idb),
-			set: idb.set.bind(idb),
-			del: idb.del.bind(idb),
-			clearStore: idb.clearStore.bind(idb),
-			getValues: idb.getValues.bind(idb),
-			getKeys: idb.getKeys.bind(idb),
-			setMultiple: idb.setMultiple.bind(idb),
-			dropDB: async () => {
-				dbMap.delete(key);
-				return await idb.dropDB();
-			}
-		} as unknown as InstanceType<typeof IDB>;
-		dbMap.set(key, v);
-	}
-
-	return dbMap.get(key)!;
+	let db = dbs.get(key);
+	if (!db) dbs.set(key, (db = new IDB(db_name, tableName)));
+	return db;
 }
 
 export { getDB, IDB };

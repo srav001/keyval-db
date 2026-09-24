@@ -1,50 +1,17 @@
-import { IDB } from "../src";
+import { getDB } from '../src/index.js';
 
-const idb = new IDB("db", "store");
+const db = getDB('db', 'store');
 
-idb.get<{ data: string }>('key1').then((v) => {
-  console.log(v);
-}).catch((e) => { 
-  console.log(e);
-}).finally(() => {
-  console.log('finally');
-});
+await db.set('key', 'value');
+await db.setMultiple([
+	{ key: 'key1', value: { data: 'one' } },
+	{ key: 'key2', value: { data: 'two' } }
+]);
 
-idb
-  .set("key", "value")
-  .then((v) => {
-    console.log(v);
-  })
-  .catch((e) => {
-    console.log(e);
-  });
+console.log(await db.get<{ data: string }>('key1'));
+console.log(await db.getKeys());
 
-idb
-  .get("key")
-  .then((v) => {
-    console.log(v);
-  })
-  .catch((e) => {
-    console.log(e);
-  });
+for (const value of await db.getValues()) console.log(value);
 
-idb
-  .setMultiple([
-    {
-      key: "key",
-      value: "",
-    },
-    {
-      key: "key2",
-      value: "",
-    },
-  ])
-  .then((v) => {
-    console.log(v);
-  });
-
-idb.getValues().then((v) => {
-  for (const val of v) {
-    console.log(val);
-  }
-});
+await db.del('key');
+await db.clearStore();

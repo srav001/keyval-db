@@ -1,6 +1,6 @@
 # keyval-db
 
-A simple, type-safe wrapper for IndexedDB that eliminates the complexity of versions, upgrades, and store management the it was supposed to be.
+A simple, type-safe wrapper for IndexedDB that eliminates the complexity of versions, upgrades, and store management, the way it was supposed to be.
 
 ## What is keyval-db?
 
@@ -11,6 +11,9 @@ A simple, type-safe wrapper for IndexedDB that eliminates the complexity of vers
 - Version management
 - Upgrade processes
 - Transaction retries on connection errors
+- Recovery when the database is deleted or upgraded by another tab or the console
+
+Reads run concurrently, and writes resolve only after they are committed.
 
 With `keyval-db`, you can focus on storing and retrieving data without worrying about the complexities of IndexedDB's low-level API.
 
@@ -67,14 +70,14 @@ const db = new IDB('myDatabase', 'myStore');
 
 ### getDB
 
-A factory function that creates and caches IDB instances cleaning up the cache when the database is dropped.
+A factory function that creates and caches IDB instances.
 
 #### Benefits
 
 - **Instance Caching**: Prevents duplicate database connections
 - **Memory Efficient**: Reuses existing instances instead of creating new ones
 - **Simplified API**: No need to manually manage database instances
-- **Automatic Cleanup**: Instances are automatically removed from cache when database is dropped
+- **Survives Drops**: A cached instance keeps working after `dropDB`; its next operation recreates the database
 
 ```typescript
 import { getDB } from 'keyval-db';
@@ -126,8 +129,8 @@ await userDB.setMultiple([
 ]);
 await userDB.clearStore();
 
-// Drop database (removes from cache automatically)
-await userDB.dropDB(); // This removes the instance from cache
+// Drop the database; the next operation recreates it
+await userDB.dropDB();
 ```
 
 ### get
@@ -192,7 +195,7 @@ db.getValues<string[]>()
 
 #### Returns
 
-`Promise<T extends Array<any>>` - A promise that resolves to an array of all values
+`Promise<T extends Array<unknown>>` - A promise that resolves to an array of all values
 
 ### getKeys
 

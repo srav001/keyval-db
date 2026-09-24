@@ -9,26 +9,60 @@ export type MultiSetItem<T> = {
 	value: T;
 };
 
-type Status = 'init' | 'connecting' | 'connected' | 'upgrading';
+const connections = new Map<string, Promise<IDBDatabase>>();
+const releases = new WeakMap<IDBDatabase, () => void>();
 
-type DB_Name = string;
-const dbsMap = new Map<
-	DB_Name,
-	{
-		req: IDBOpenDBRequest;
-		db: IDBDatabase | undefined;
-		stores_Q: Set<() => boolean>;
-		status: Status;
+function open(name: string, store: string, version?: number): Promise<IDBDatabase> {
+	const connection = new Promise<IDBDatabase>((resolve, reject) => {
+		const req = indexedDB.open(name, version);
+		req.onupgradeneeded = () => {
+			if (!req.result.objectStoreNames.contains(store)) req.result.createObjectStore(store);
+		};
+		req.onsuccess = () => {
+			const db = req.result;
+			// Another tab upgrading or deleting the database, or the browser closing the connection, must not
+			// strand later operations on a dead handle; the next operation reopens and recreates what is missing.
+			const release = () => {
+				db.close();
+				if (connections.get(name) === connection) connections.delete(name);
+			};
+			db.onversionchange = release;
+			db.onclose = release;
+			releases.set(db, release);
+			resolve(db);
+		};
+		req.onerror = () => reject(req.error);
+	});
+	connections.set(name, connection);
+	connection.catch(() => {
+		if (connections.get(name) === connection) connections.delete(name);
+	});
+	return connection;
+}
+
+async function connect(name: string, store: string): Promise<IDBDatabase> {
+	const connection = connections.get(name) ?? open(name, store);
+	const db = await connection;
+	if (db.objectStoreNames.contains(store)) return db;
+	// Adding a store needs a version upgrade. Only the first caller to see this connection upgrades it; the
+	// rest wait for the replacement and upgrade again only if their own store is still missing.
+	if (connections.get(name) === connection) {
+		db.close();
+		open(name, store, db.version + 1);
 	}
->();
+	return connect(name, store);
+}
 
-type Reject = (err: Event) => void;
+const recoverable = new Set(['AbortError', 'InvalidStateError', 'NotFoundError', 'VersionError']);
 
 /**
  * A class for interacting with IndexedDB through a simple key-value interface
  *
  * This class provides a Promise-based API for storing and retrieving data from
- * IndexedDB, with automatic retry logic and connection management.
+ * IndexedDB. Connections, object store creation, version upgrades and recovery
+ * from a deleted or externally upgraded database are handled automatically.
+ * Operations issued before the connection is ready wait for it, and every
+ * operation runs in its own transaction, so reads run concurrently.
  *
  * @example
  * ```typescript
@@ -42,359 +76,43 @@ type Reject = (err: Event) => void;
  * ```
  */
 export class IDB {
-	#db_name: DB_Name;
-	#storeName: string;
-
-	#hasObjectStore = false;
-
-	#db_Q = new Set<() => void>();
-
-	#runStores_Q() {
-		const item = dbsMap.get(this.#db_name)!;
-
-		for (const fn of item.stores_Q) {
-			const v = fn();
-			if (v === false) {
-				break;
-			} else {
-				item.stores_Q.delete(fn);
-			}
-		}
-	}
-
-	#update_db_status(s: Status) {
-		const i = dbsMap.get(this.#db_name)!;
-		i.status = s;
-		dbsMap.set(this.#db_name, i);
-	}
-
-	#update_db(idb: IDBDatabase) {
-		const i = dbsMap.get(this.#db_name)!;
-		i.db = idb;
-		dbsMap.set(this.#db_name, i);
-	}
-
-	#updateDBinMap(evnt: Event) {
-		const idb = (
-			evnt.target as unknown as {
-				result: IDBDatabase;
-			}
-		).result;
-
-		if (!idb) {
-			return;
-		}
-
-		this.#update_db(idb);
-	}
-
-	#markObjectStoreConnected(): boolean {
-		this.#hasObjectStore = true;
-
-		for (const fn of this.#db_Q) {
-			this.#db_Q.delete(fn);
-			fn();
-		}
-
-		this.#update_db_status('connected');
-
-		return true;
-	}
-
-	#setupRequests(req: IDBOpenDBRequest) {
-		this.#update_db_status('connecting');
-
-		if (req.readyState === 'done') {
-			this.#update_db(req.result);
-			this.#markObjectStoreConnected();
-
-			return;
-		}
-
-		req.onupgradeneeded = (event) => {
-			const idb = (
-				event.target as unknown as {
-					result: IDBDatabase;
-				}
-			).result;
-
-			if (!idb) return;
-
-			if (idb.objectStoreNames.length === 0 || idb.objectStoreNames.contains(this.#storeName) === false) {
-				idb.createObjectStore(this.#storeName);
-
-				return;
-			}
-		};
-
-		req.onsuccess = (event) => {
-			this.#updateDBinMap(event);
-			this.#markObjectStoreConnected();
-			this.#runStores_Q();
-		};
-
-		req.onerror = (event) => {
-			this.#updateDBinMap(event);
-			this.#objectStoreExists();
-		};
-	}
-
-	#bumpVersion() {
-		const item = dbsMap.get(this.#db_name)!;
-		const idb = item?.db;
-		if (!idb) {
-			return;
-		}
-		item.status = 'upgrading';
-		idb.close();
-		dbsMap.set(this.#db_name, item);
-
-		const req = indexedDB.open(this.#db_name, idb.version + 1);
-		this.#setupRequests(req);
-	}
-
-	#objectStoreExists(): boolean {
-		const item = dbsMap.get(this.#db_name);
-		const idb = item?.db;
-		if (!idb) {
-			this.#pre_init();
-			return false;
-		}
-
-		if (idb.objectStoreNames.contains(this.#storeName) === false) {
-			item.stores_Q.add(() => {
-				const dbItem = dbsMap.get(this.#db_name);
-				const idb = dbItem?.db;
-				if (!idb) {
-					return false;
-				}
-				if (idb.objectStoreNames.contains(this.#storeName) === false) {
-					idb.createObjectStore(this.#storeName);
-					dbItem.db = idb;
-					dbsMap.set(this.#db_name, dbItem);
-					this.#markObjectStoreConnected();
-				}
-				return true;
-			});
-
-			this.#bumpVersion();
-			return false;
-		} else {
-			this.#markObjectStoreConnected();
-			return true;
-		}
-	}
-
-	async #checkDBexists() {
-		const dbs = await indexedDB.databases();
-		const has_db = dbs.find((db) => db.name === this.#db_name);
-		if (!has_db) {
-			this.#update_db_status('init');
-			this.#init();
-		} else {
-			this.#objectStoreExists();
-		}
-	}
-
-	#handleRetry(err: unknown, cb: () => void, retryCount: number, reject: Reject) {
-		if (retryCount < 5 && err instanceof DOMException) {
-			if (
-				err.message.includes('database connection is closing') ||
-				err.message.includes('the specified object stores was not found')
-			) {
-				this.#db_Q.add(cb);
-				this.#update_db_status('upgrading');
-				this.#checkDBexists();
-			} else {
-				reject(err as unknown as Event);
-			}
-		} else {
-			reject(err as Event);
-		}
-	}
-
-	#handleNoDB(cb: () => void, retryCount: number, reject: Reject) {
-		if (retryCount < 5) {
-			this.#db_Q.add(cb);
-			this.#checkDBexists();
-		} else {
-			reject(new Event('Database not found'));
-		}
-	}
-
-	#process_get<T>(resolve: (value: T) => void, reject: Reject, key: IDBValidKey, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).get(key);
-			req.onsuccess = () => resolve(req.result);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get(resolve, reject, key, retryCount), retryCount, reject);
-		}
-	}
-
-	#process_get_all<T>(resolve: (value: T) => void, reject: Reject, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).getAll();
-			req.onsuccess = () => resolve(req.result as T);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get_all(resolve, reject, retryCount), retryCount, reject);
-		}
-	}
-
-	#process_get_keys(resolve: (value: Array<IDBValidKey>) => void, reject: Reject, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readonly').objectStore(this.#storeName).getAllKeys();
-			req.onsuccess = () => resolve(req.result);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_get_keys(resolve, reject, retryCount), retryCount, reject);
-		}
-	}
-
-	#process_set(resolve: (value: true) => void, reject: Reject, key: IDBValidKey, value: unknown, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).put(value, key);
-			req.onsuccess = () => resolve(true);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(
-				err,
-				() => this.#process_set(resolve, reject, key, value, retryCount),
-				retryCount,
-				reject
-			);
-		}
-	}
-
-	#process_set_multiple<T extends MultiSetItem<unknown>>(
-		resolve: (value: true) => void,
-		reject: Reject,
-		items: Array<T>,
-		retryCount = -1
-	) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const tx = idb.transaction([this.#storeName], 'readwrite');
-			if (items.length > 0) {
-				for (const item of items) {
-					tx.objectStore(this.#storeName).put(item.value, item.key);
-					tx.onerror = (e) => reject(e);
-				}
-				tx.oncomplete = () => resolve(true);
-			}
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(
-				err,
-				() => this.#process_set_multiple(resolve, reject, items, retryCount),
-				retryCount,
-				reject
-			);
-		}
-	}
-
-	#process_delete(resolve: (value: true) => void, reject: Reject, key: IDBValidKey, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).delete(key);
-			req.onsuccess = () => resolve(true);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_delete(resolve, reject, key, retryCount), retryCount, reject);
-		}
-	}
-
-	#process_db_clear(resolve: (value: true) => void, reject: Reject, retryCount = -1) {
-		try {
-			const idb = dbsMap.get(this.#db_name)?.db!;
-			const req = idb.transaction([this.#storeName], 'readwrite').objectStore(this.#storeName).clear();
-			req.onsuccess = () => resolve(true);
-			req.onerror = (e) => reject(e);
-		} catch (err) {
-			retryCount = retryCount + 1;
-			this.#handleRetry(err, () => this.#process_db_clear(resolve, reject, retryCount), retryCount, reject);
-		}
-	}
-
-	async #init(): Promise<boolean | void> {
-		let req: IDBOpenDBRequest;
-		let has_db: IDBDatabaseInfo | undefined;
-
-		const dbs = await indexedDB.databases();
-		if (dbs.length === 0) {
-			req = indexedDB.open(this.#db_name, 1);
-		} else {
-			const item = dbsMap.get(this.#db_name)!;
-			if (item.status !== 'init') {
-				if (item.status === 'connected') {
-					return this.#objectStoreExists();
-				}
-				item.stores_Q.add(() => this.#objectStoreExists());
-				return;
-			} else {
-				has_db = dbs.find((db) => db.name === this.#db_name);
-				if (has_db) {
-					has_db = undefined;
-					req = indexedDB.open(this.#db_name);
-				} else {
-					req = indexedDB.open(this.#db_name, 1);
-				}
-			}
-		}
-
-		if (!has_db) {
-			const item = dbsMap.get(this.#db_name)!;
-			item.req = req;
-			dbsMap.set(this.#db_name, item);
-
-			this.#setupRequests(req);
-		}
-	}
-
-	#pre_init() {
-		const item = dbsMap.get(this.#db_name);
-		if (!item) {
-			dbsMap.set(this.#db_name, {
-				db: undefined,
-				// @ts-expect-error this is fine for now
-				req: undefined,
-				stores_Q: new Set(),
-				status: 'init'
-			});
-		}
-		this.#init();
-	}
+	#name: string;
+	#store: string;
 
 	/**
 	 * Creates a new IDB instance to interact with IndexedDB
 	 * @param db_name - The name of the IndexedDB database to connect to
 	 * @param storeName - The name of the object store to use within the database
 	 */
-	constructor(db_name: DB_Name, storeName: string) {
-		this.#db_name = db_name;
-		this.#storeName = storeName;
-
-		this.#pre_init();
+	constructor(db_name: string, storeName: string) {
+		this.#name = db_name;
+		this.#store = storeName;
+		// Opening eagerly lets the first operation skip the connection wait; failures surface on that operation.
+		connect(db_name, storeName).catch(() => undefined);
 	}
 
-	#runOrQueue(fn: () => void, reject: Reject) {
-		const item = dbsMap.get(this.#db_name);
-		if ((item && item.status !== 'connected') || this.#hasObjectStore === false) {
-			this.#db_Q.add(fn);
-		} else if (!item?.db) {
-			return this.#handleNoDB(fn, 1, reject);
-		} else {
-			fn();
+	async #run<T>(
+		mode: IDBTransactionMode,
+		operation: (store: IDBObjectStore) => IDBRequest<T> | void,
+		attempt = 0
+	): Promise<T> {
+		let db: IDBDatabase | undefined;
+		try {
+			const connected = (db = await connect(this.#name, this.#store));
+			return await new Promise<T>((resolve, reject) => {
+				const tx = connected.transaction(this.#store, mode);
+				const req = operation(tx.objectStore(this.#store));
+				// Reads resolve as soon as the value arrives; writes wait for the commit so success means durable.
+				if (mode === 'readonly' && req) req.onsuccess = () => resolve(req.result);
+				else tx.oncomplete = () => resolve(req?.result as T);
+				tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
+			});
+		} catch (error) {
+			if (attempt < 3 && error instanceof DOMException && recoverable.has(error.name)) {
+				if (db) releases.get(db)?.();
+				return this.#run(mode, operation, attempt + 1);
+			}
+			throw error;
 		}
 	}
 
@@ -404,110 +122,77 @@ export class IDB {
 	 * @param key - The key to look up in the database
 	 * @returns A promise that resolves to the value of type T associated with the key
 	 */
-	get<T>(key: IDBValidKey): Promise<T> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_get(resolve, reject, key), reject);
-		});
-	}
+	get = <T>(key: IDBValidKey): Promise<T> => this.#run<T>('readonly', (store) => store.get(key));
 
 	/**
 	 * Retrieves all values stored in the database
 	 * @template T - The type of array to be returned, must extend Array
 	 * @returns A promise that resolves to an array of all values in the database
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	getValues<T extends Array<any>>(): Promise<T> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_get_all(resolve, reject), reject);
-		});
-	}
+	getValues = <T extends Array<unknown>>(): Promise<T> =>
+		this.#run('readonly', (store) => store.getAll()) as Promise<T>;
 
 	/**
 	 * Retrieves all keys stored in the database
 	 * @returns A promise that resolves to an array of all keys in the database
 	 */
-	getKeys(): Promise<Array<IDBValidKey>> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_get_keys(resolve, reject), reject);
-		});
-	}
+	getKeys = (): Promise<Array<IDBValidKey>> => this.#run('readonly', (store) => store.getAllKeys());
 
 	/**
 	 * Stores a value in the database with the specified key
 	 * @param key - The key to store the value under
 	 * @param value - The value to store
-	 * @returns A promise that resolves to true when the operation is complete
+	 * @returns A promise that resolves to true once the write is committed
 	 */
-	set(key: IDBValidKey, value: unknown): Promise<true> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_set(resolve, reject, key, value), reject);
-		});
-	}
+	set = async (key: IDBValidKey, value: unknown): Promise<true> => {
+		await this.#run('readwrite', (store) => store.put(value, key));
+		return true;
+	};
 
 	/**
 	 * Stores multiple key-value pairs in the database in a single transaction
 	 * @template T - The type of values being stored
 	 * @param items - An array of objects containing key-value pairs to store
-	 * @returns A promise that resolves to true when all items have been stored
+	 * @returns A promise that resolves to true once all items are committed
 	 */
-	setMultiple<T>(items: Array<MultiSetItem<T>>): Promise<true> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_set_multiple(resolve, reject, items), reject);
+	setMultiple = async <T>(items: Array<MultiSetItem<T>>): Promise<true> => {
+		await this.#run('readwrite', (store) => {
+			for (const item of items) store.put(item.value, item.key);
 		});
-	}
+		return true;
+	};
 
 	/**
 	 * Deletes a value from the database by its key
 	 * @param key - The key of the value to delete
-	 * @returns A promise that resolves to true when the value has been deleted
+	 * @returns A promise that resolves to true once the deletion is committed
 	 */
-	del(key: IDBValidKey): Promise<true> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_delete(resolve, reject, key), reject);
-		});
-	}
+	del = async (key: IDBValidKey): Promise<true> => {
+		await this.#run('readwrite', (store) => store.delete(key));
+		return true;
+	};
 
 	/**
 	 * Clears all data from the current object store
-	 * @returns A promise that resolves to true when the store has been cleared
+	 * @returns A promise that resolves to true once the store is cleared
 	 */
-	clearStore(): Promise<true> {
-		return new Promise((resolve, reject) => {
-			this.#runOrQueue(() => this.#process_db_clear(resolve, reject), reject);
-		});
-	}
+	clearStore = async (): Promise<true> => {
+		await this.#run('readwrite', (store) => store.clear());
+		return true;
+	};
 
 	/**
-	 * Deletes the entire database
+	 * Deletes the entire database. A later operation on any instance recreates it.
 	 * @returns A promise that resolves to true when the database has been deleted
-	 * @throws Event if the database cannot be dropped because it is currently bumping version
 	 */
-	dropDB(): Promise<true> {
+	dropDB = async (): Promise<true> => {
+		const connection = connections.get(this.#name);
+		connections.delete(this.#name);
+		(await connection?.catch(() => undefined))?.close();
 		return new Promise((resolve, reject) => {
-			const item = dbsMap.get(this.#db_name)!;
-
-			if (item.status === 'upgrading') {
-				reject(new Event('Cannot drop DB while bumping version'));
-				return;
-			}
-
-			const idb = item?.db;
-			console.log('drop', this.#db_name, this.#storeName);
-			idb?.close();
-
-			const deleteRequest = indexedDB.deleteDatabase(this.#db_name);
-			deleteRequest.onsuccess = () => {
-				const item = dbsMap.get(this.#db_name);
-				if (!item) {
-					return;
-				}
-				resolve(true);
-
-				if (idb?.objectStoreNames.length === 0) {
-					dbsMap.delete(this.#db_name);
-				}
-			};
-			deleteRequest.onerror = (e) => reject(e);
+			const req = indexedDB.deleteDatabase(this.#name);
+			req.onsuccess = () => resolve(true);
+			req.onerror = () => reject(req.error);
 		});
-	}
+	};
 }
