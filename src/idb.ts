@@ -53,7 +53,7 @@ async function connect(name: string, store: string): Promise<IDBDatabase> {
 	return connect(name, store);
 }
 
-const recoverable = new Set(['AbortError', 'InvalidStateError', 'NotFoundError', 'VersionError']);
+const recoverable: readonly string[] = ['AbortError', 'InvalidStateError', 'NotFoundError', 'VersionError'];
 
 /**
  * A class for interacting with IndexedDB through a simple key-value interface
@@ -108,7 +108,7 @@ export class IDB {
 				tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
 			});
 		} catch (error) {
-			if (attempt < 3 && error instanceof DOMException && recoverable.has(error.name)) {
+			if (attempt < 3 && error instanceof DOMException && recoverable.includes(error.name)) {
 				if (db) releases.get(db)?.();
 				return this.#run(mode, operation, attempt + 1);
 			}
