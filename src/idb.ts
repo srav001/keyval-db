@@ -40,7 +40,7 @@ function open(name: string, store: string, version?: number): Promise<IDBDatabas
 	return connection;
 }
 
-async function connect(name: string, store: string): Promise<IDBDatabase> {
+export async function connect(name: string, store: string): Promise<IDBDatabase> {
 	const connection = connections.get(name) ?? open(name, store);
 	const db = await connection;
 	if (db.objectStoreNames.contains(store)) return db;
@@ -54,6 +54,57 @@ async function connect(name: string, store: string): Promise<IDBDatabase> {
 }
 
 const recoverable: readonly string[] = ['AbortError', 'InvalidStateError', 'NotFoundError', 'VersionError'];
+
+export function isRecoverable(error: unknown): boolean {
+	return error instanceof DOMException && recoverable.includes(error.name);
+}
+
+export type Operation<T> = (store: IDBObjectStore) => IDBRequest<T> | void;
+
+export function transact<T>(
+	db: IDBDatabase,
+	store: string,
+	mode: IDBTransactionMode,
+	operation: Operation<T>,
+	onSuccess: (value: T) => void,
+	onFailure: (error: unknown) => void
+): () => void {
+	const fail = (error: unknown) => {
+		if (isRecoverable(error)) releases.get(db)?.();
+		onFailure(error);
+	};
+	try {
+		const tx = db.transaction(store, mode);
+		const req = operation(tx.objectStore(store));
+		// Reads resolve as soon as the value arrives; writes wait for the commit so success means durable.
+		if (mode === 'readonly' && req) req.onsuccess = () => onSuccess(req.result);
+		else tx.oncomplete = () => onSuccess(req?.result as T);
+		tx.onabort = () => fail(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
+		return () => {
+			// A cancelled operation is not a broken connection, so it must not release it.
+			tx.onabort = null;
+			try {
+				tx.abort();
+			} catch {
+				// Already committed or aborted; nothing is left to cancel.
+			}
+		};
+	} catch (error) {
+		fail(error);
+		return () => undefined;
+	}
+}
+
+export async function drop(name: string): Promise<void> {
+	const connection = connections.get(name);
+	connections.delete(name);
+	(await connection?.catch(() => undefined))?.close();
+	return new Promise((resolve, reject) => {
+		const req = indexedDB.deleteDatabase(name);
+		req.onsuccess = () => resolve();
+		req.onerror = () => reject(req.error);
+	});
+}
 
 /**
  * A class for interacting with IndexedDB through a simple key-value interface
@@ -91,27 +142,14 @@ export class IDB {
 		connect(db_name, storeName).catch(() => undefined);
 	}
 
-	async #run<T>(
-		mode: IDBTransactionMode,
-		operation: (store: IDBObjectStore) => IDBRequest<T> | void,
-		attempt = 0
-	): Promise<T> {
-		let db: IDBDatabase | undefined;
+	async #run<T>(mode: IDBTransactionMode, operation: Operation<T>, attempt = 0): Promise<T> {
 		try {
-			const connected = (db = await connect(this.#name, this.#store));
+			const db = await connect(this.#name, this.#store);
 			return await new Promise<T>((resolve, reject) => {
-				const tx = connected.transaction(this.#store, mode);
-				const req = operation(tx.objectStore(this.#store));
-				// Reads resolve as soon as the value arrives; writes wait for the commit so success means durable.
-				if (mode === 'readonly' && req) req.onsuccess = () => resolve(req.result);
-				else tx.oncomplete = () => resolve(req?.result as T);
-				tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
+				transact(db, this.#store, mode, operation, resolve, reject);
 			});
 		} catch (error) {
-			if (attempt < 3 && error instanceof DOMException && recoverable.includes(error.name)) {
-				if (db) releases.get(db)?.();
-				return this.#run(mode, operation, attempt + 1);
-			}
+			if (attempt < 3 && isRecoverable(error)) return this.#run(mode, operation, attempt + 1);
 			throw error;
 		}
 	}
@@ -186,13 +224,7 @@ export class IDB {
 	 * @returns A promise that resolves to true when the database has been deleted
 	 */
 	dropDB = async (): Promise<true> => {
-		const connection = connections.get(this.#name);
-		connections.delete(this.#name);
-		(await connection?.catch(() => undefined))?.close();
-		return new Promise((resolve, reject) => {
-			const req = indexedDB.deleteDatabase(this.#name);
-			req.onsuccess = () => resolve(true);
-			req.onerror = () => reject(req.error);
-		});
+		await drop(this.#name);
+		return true;
 	};
 }

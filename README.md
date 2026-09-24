@@ -37,6 +37,22 @@ pnpm add keyval-db
 bun add keyval-db
 ```
 
+## Effect
+
+`keyval-db/effect` exposes the same `IDB` class and `getDB` with [Effect](https://effect.website) v4 return types. It shares connections and recovery with the Promise API, fails with a typed `IDBError` (`reason` is the `DOMException` name), and aborts the transaction when the fiber is interrupted, so an interrupted write is never committed. `effect` is an optional peer dependency; the root import never loads it.
+
+```typescript
+import { Effect } from 'effect';
+import { getDB } from 'keyval-db/effect';
+
+const db = getDB('myDatabase', 'myStore');
+
+const program = Effect.gen(function* () {
+	yield* db.set('user-123', { name: 'John' });
+	return yield* db.get<{ name: string }>('user-123');
+}).pipe(Effect.catchTag('IDBError', (error) => Effect.logError(error.reason)));
+```
+
 ## API Reference
 
 - [IDB Class](#idb-class)

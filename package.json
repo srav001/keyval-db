@@ -12,6 +12,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./effect": {
+			"types": "./dist/effect.d.ts",
+			"default": "./dist/effect.js"
 		}
 	},
 	"sideEffects": false,
@@ -38,7 +42,16 @@
 		"url": "https://github.com/srav001/keyval-db/issues"
 	},
 	"homepage": "https://github.com/srav001/keyval-db#readme",
+	"peerDependencies": {
+		"effect": ">=4.0.0-rc.112 <5"
+	},
+	"peerDependenciesMeta": {
+		"effect": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
+		"effect": "4.0.0-rc.117",
 		"oxfmt": "0.70.0",
 		"oxlint": "1.85.0",
 		"oxlint-tsgolint": "7.0.2002",
